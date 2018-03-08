@@ -3,6 +3,21 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+
+#include <cuda_gl_interop.h>
+
+#define cudaCheckErrors(msg) \
+    { \
+        cudaError_t __err = cudaGetLastError(); \
+        if (__err != cudaSuccess) { \
+            fprintf(stderr, "Fatal error: %s (%s at %s:%d)\n", \
+                msg, cudaGetErrorString(__err), \
+                __FILE__, __LINE__); \
+            fprintf(stderr, "*** FAILED - ABORTING\n"); \
+            exit(1); \
+        } \
+    }
 
 int main()
 {
@@ -12,13 +27,12 @@ int main()
 		return -1;
 	}
 
-	glfwWindowHint(GLFW_SAMPLES, 4); // 4x antialiasing
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // We want OpenGL 3.3
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
+	glfwWindowHint(GLFW_SAMPLES, 1); // 1x antialiasing
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4); // We want OpenGL 4.5
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // We don't want the old OpenGL 
 
-																   // Open a window and create its OpenGL context
+	// Open a window and create its OpenGL context
 	GLFWwindow* window; // (In the accompanying source code, this variable is global for simplicity)
 	window = glfwCreateWindow(1280, 720, "Work Please", NULL, NULL);
 	if (window == NULL)
@@ -38,9 +52,34 @@ int main()
 	// Ensure we can capture the escape key being pressed below
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
 
+	glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
+
+	int numParticles = 100;
+	unsigned long long dataSize = 0;
+	dataSize += sizeof(float) * 4 * numParticles; // positions (4 float * numParticles)
+	//dataSize += sizeof(float) * 4 * numParticles; // velocity (4 float * numParticles)
+	//dataSize += sizeof(float) * numParticles; // invMass (float)
+	//dataSize += sizeof(int) * numParticles;
+
+	// Create SSBO
+	GLuint ssbo = 0;
+	glGenBuffers(1, &ssbo);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, dataSize, NULL, GL_DYNAMIC_COPY);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+	cudaGraphicsResource **cmapSsbo;
+	cudaCheckErrors(cudaGraphicsGLRegisterBuffer(cmapSsbo, ssbo, cudaGraphicsRegisterFlagsWriteDiscard));
+
+	cudaStream_t stream;
+	cudaStreamCreate(&stream);
+	cudaCheckErrors(cudaGraphicsMapResources(1, cmapSsbo, stream));
+	cudaCheckErrors(cudaGraphicsUnmapResources(1, cmapSsbo, stream));
+
 	do
 	{
 		// Draw nothing, see you in tutorial 2 !
+		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
 		// Swap buffers
 		glfwSwapBuffers(window);
