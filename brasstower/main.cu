@@ -70,16 +70,44 @@ ParticleSolver * solver;
 
 void updateControl()
 {
-	glm::vec3 control(0.0f);
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		control += glm::vec3(0.f, 0.f, 1.f);
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		control -= glm::vec3(0.f, 0.f, 1.f);
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		control += glm::vec3(1.f, 0.f, 0.f);
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		control -= glm::vec3(1.f, 0.f, 0.f);
-	renderer->camera.shift(control * 0.01f);
+	// mouse control
+	{
+		static bool isHoldingLeftMouse = false;
+		static bool isHoldingRightMouse = false;
+		static glm::dvec2 prevMousePos = [&]()
+		{
+			glm::dvec2 mousePos;
+			glfwGetCursorPos(window, &mousePos.y, &mousePos.x);
+			return mousePos;
+		}();
+
+		glm::vec2 rotation(0.0f);
+		glm::dvec2 mousePos;
+		glfwGetCursorPos(window, &mousePos.y, &mousePos.x);
+
+		//if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+			rotation += (mousePos - prevMousePos);
+
+		glm::dvec2 diff = (mousePos - prevMousePos); 
+		prevMousePos = mousePos;
+		renderer->camera.rotate(rotation * glm::vec2(0.005f, 0.005f));
+	}
+
+	// key control
+	{
+		glm::vec3 control(0.0f);
+		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+			control += glm::vec3(0.f, 0.f, 1.f);
+		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+			control -= glm::vec3(0.f, 0.f, 1.f);
+		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+			control += glm::vec3(1.f, 0.f, 0.f);
+		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+			control -= glm::vec3(1.f, 0.f, 0.f);
+		renderer->camera.shift(control * 0.01f);
+	}
 }
 
 int main()
@@ -101,7 +129,7 @@ int main()
 		mapPositions<<<1, numParticles>>>(dptr, p);
 		renderer->unmapSsbo();
 
-		p += 0.1f;
+		//p += 0.1f;
 
 		renderer->update(numParticles);
 

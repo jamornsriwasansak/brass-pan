@@ -12,9 +12,29 @@
 
 struct Camera
 {
+	static inline glm::vec3 SphericalToWorld(const glm::vec2 & thetaPhi)
+	{
+		const float & phi = thetaPhi.x;
+		const float & theta = thetaPhi.y;
+		const float sinphi = std::sin(phi);
+		const float cosphi = std::cos(phi);
+		const float sintheta = std::sin(theta);
+		const float costheta = std::cos(theta);
+		return glm::vec3(costheta * sinphi, cosphi, sintheta * sinphi);
+	}
+
+	static inline glm::vec2 WorldToSpherical(const glm::vec3 & pos)
+	{
+		const float phi = std::atan2(pos.z, pos.x);
+		const float numerator = std::sqrt(pos.x * pos.x + pos.z * pos.z);
+		const float theta = std::atan2(numerator, pos.y);
+		return glm::vec2(theta, phi);
+	}
+
 	Camera(const glm::vec3 & pos, const glm::vec3 & lookAt, const float fovy, const float aspectRatio):
 		pos(pos),
 		dir(glm::normalize(lookAt - pos)),
+		thetaPhi(WorldToSpherical(glm::normalize(lookAt - pos))),
 		up(glm::vec3(0.0f, 1.0f, 0.0f)),
 		fovY(fovy),
 		aspectRatio(aspectRatio)
@@ -30,7 +50,7 @@ struct Camera
 	void rotate(const glm::vec2 & rotation)
 	{
 		thetaPhi += rotation;
-
+		dir = SphericalToWorld(thetaPhi);
 	}
 
 	glm::mat4 vpMatrix()
