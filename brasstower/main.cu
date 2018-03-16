@@ -106,6 +106,12 @@ void updateControl()
 			control += glm::vec3(1.f, 0.f, 0.f);
 		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
 			control -= glm::vec3(1.f, 0.f, 0.f);
+		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+			control += glm::vec3(0.f, 1.f, 0.f);
+		if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+			control -= glm::vec3(0.f, 1.f, 0.f);
+		float length = glm::length(control);
+		control = length > 0 ? control / length : control;
 		renderer->camera.shift(control * 0.01f);
 	}
 }

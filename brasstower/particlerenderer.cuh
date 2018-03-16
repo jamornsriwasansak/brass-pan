@@ -44,7 +44,7 @@ struct Camera
 	{
 		const glm::vec3 & mBasisZ = dir;
 		const glm::vec3 & mBasisX = glm::normalize(glm::cross(up, mBasisZ));
-		pos += mBasisZ * move.z + mBasisX * move.x;
+		pos += mBasisZ * move.z + mBasisX * move.x + up * move.y;
 	}
 
 	void rotate(const glm::vec2 & rotation)
@@ -75,7 +75,7 @@ static GLFWwindow* InitGL(const size_t width, const size_t height)
 		throw new std::exception("Failed to initialize GLFW\n");
 	}
 
-	glfwWindowHint(GLFW_SAMPLES, 1); // 1x antialiasing
+	glfwWindowHint(GLFW_SAMPLES, 16); // antialiasing
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4); 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); 
@@ -118,6 +118,7 @@ struct ParticleRenderer
 
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_CULL_FACE);
+		glEnable(GL_MULTISAMPLE);
 		glDepthFunc(GL_LEQUAL);
 
 		// load particle mesh
