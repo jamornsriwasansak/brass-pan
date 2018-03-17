@@ -111,6 +111,7 @@ copy /y /d $(SolutionDir)dependencies\bin\*.dll $(SolutionDir)sandbox</Command>
     <ClInclude Include="opengl\buffer.h" />
     <ClInclude Include="opengl\shader.h" />
     <ClInclude Include="mesh.h" />
+    <ClInclude Include="scene.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,12 +1,13 @@
 #version 450 core
 
 layout(location = 0) in vec3 vertexPos;
-uniform mat4 uMVP;
+uniform mat4 uVPMatrix;
+uniform mat4 uModelMatrix;
 
-out vec3 vPosition;
+out vec4 vPosition;
 
 void main()
 {
-	vPosition = vertexPos * 1000;
-	gl_Position = uMVP * vec4(vPosition, 1.0);
+	vPosition = uModelMatrix * vec4(vertexPos * 100.0, 1.0);
+	gl_Position = uVPMatrix * vPosition;
 }

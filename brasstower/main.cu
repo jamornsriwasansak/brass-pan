@@ -12,6 +12,7 @@
 #include "ext/helper_math.h"
 #include "opengl/shader.h"
 #include "mesh.h"
+#include "scene.h"
 
 #include "particlerenderer.cuh"
 #include "particlesolver.cuh"
@@ -55,8 +56,6 @@ Error:
 
 	return cudaStatus;
 }
-
-const float radius = 0.01;
 
 __global__ void mapPositions(float4 * positions, float p)
 {
@@ -116,6 +115,19 @@ void updateControl()
 	}
 }
 
+std::shared_ptr<Scene> initSimpleScene()
+{
+	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	scene->planes.push_back(StaticPlane(glm::vec3(0), glm::vec3(0, 1, 0)));
+	scene->planes.push_back(StaticPlane(glm::vec3(0, 0, -0.19), glm::normalize(glm::vec3(0, 0, 1))));
+	scene->planes.push_back(StaticPlane(glm::vec3(0, 0, 0.19), glm::normalize(glm::vec3(0, 0, -1))));
+	scene->planes.push_back(StaticPlane(glm::vec3(-0.28, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(StaticPlane(glm::vec3(0.28, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->numParticles = 10;
+	scene->radius = 0.01f;
+	return scene;
+}
+
 int main()
 {
 	cudaGLSetGLDevice(0);
@@ -123,9 +135,11 @@ int main()
 
 	float p = 0.0f;
 
+	std::shared_ptr<Scene> scene = initSimpleScene();
+
 	window = InitGL(1280, 720);
-	renderer = new ParticleRenderer(glm::uvec2(1280, 720), radius);
-	solver = new ParticleSolver();
+	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
+	solver = new ParticleSolver(scene);
 
 	do
 	{
@@ -137,7 +151,7 @@ int main()
 
 		//p += 0.1f;
 
-		renderer->update(numParticles);
+		renderer->update();
 
 		// Swap buffers
 		glfwSwapBuffers(window);

@@ -9,6 +9,7 @@
 
 #include "cuda/helper.cuh"
 #include "mesh.h"
+#include "scene.h"
 
 struct Camera
 {
@@ -56,7 +57,7 @@ struct Camera
 	glm::mat4 vpMatrix()
 	{
 		glm::mat4 viewMatrix = glm::lookAt(pos, dir + pos, glm::vec3(0, 1, 0));
-		glm::mat4 projMatrix = glm::perspective(fovY, aspectRatio, 0.01f, 100.0f);
+		glm::mat4 projMatrix = glm::perspective(fovY, aspectRatio, 0.05f, 100.0f);
 		return projMatrix * viewMatrix;
 	}
 
@@ -103,9 +104,9 @@ struct ParticleRenderer
 {
 	const size_t MaxNumParticles = 1000;
 
-	ParticleRenderer(const glm::uvec2 & resolution, const float radius):
-		camera(glm::vec3(0, 1, -1), glm::vec3(0), glm::radians(60.0f), (float)resolution.x / (float)resolution.y),
-		radius(radius)
+	ParticleRenderer(const glm::uvec2 & resolution, const std::shared_ptr<Scene> & scene):
+		camera(glm::vec3(0, 1, 1), glm::vec3(0), glm::radians(50.0f), (float)resolution.x / (float)resolution.y),
+		scene(scene)
 	{
 		glGenVertexArrays(1, &globalVaoHandle);
 		glBindVertexArray(globalVaoHandle);
@@ -148,7 +149,9 @@ struct ParticleRenderer
 	}
 
 	std::shared_ptr<OpenglProgram> planeDrawingProgram;
-	std::shared_ptr<OpenglUniform> planeDrawingProgram_uMVPMatrix;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uVPMatrix;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uModelMatrix;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uCameraPosition;
 	void initInfinitePlaneDrawingProgram()
 	{
 		planeDrawingProgram = std::make_shared<OpenglProgram>();
@@ -156,10 +159,12 @@ struct ParticleRenderer
 		planeDrawingProgram->attachFragmentShader(OpenglFragmentShader::CreateFromFile("glshaders/plane.frag"));
 		planeDrawingProgram->compile();
 
-		planeDrawingProgram_uMVPMatrix = particlesDrawingProgram->registerUniform("uMVP");
+		planeDrawingProgram_uVPMatrix = planeDrawingProgram->registerUniform("uVPMatrix");
+		planeDrawingProgram_uModelMatrix = planeDrawingProgram->registerUniform("uModelMatrix");
+		planeDrawingProgram_uCameraPosition = planeDrawingProgram->registerUniform("uCameraPos");
 	}
 
-	void update(const size_t numParticles)
+	void update()
 	{
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
@@ -172,10 +177,10 @@ struct ParticleRenderer
 			glBindBuffer(GL_ARRAY_BUFFER, particleMesh->mGl.mVerticesBuffer->mHandle);
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 			particlesDrawingProgram_uMVPMatrix->setMat4(cameraVpMatrix);
-			particlesDrawingProgram_uRadius->setFloat(radius);
+			particlesDrawingProgram_uRadius->setFloat(scene->radius);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, ssboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
-			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, numParticles);
+			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
 			glDisableVertexAttribArray(0);
 		}
 
@@ -185,9 +190,14 @@ struct ParticleRenderer
 			glEnableVertexAttribArray(0);
 			glBindBuffer(GL_ARRAY_BUFFER, planeMesh->mGl.mVerticesBuffer->mHandle);
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-			planeDrawingProgram_uMVPMatrix->setMat4(cameraVpMatrix);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planeMesh->mGl.mIndicesBuffer->mHandle);
-			glDrawElements(GL_TRIANGLES, planeMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
+			planeDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
+			planeDrawingProgram_uCameraPosition->setVec3(camera.pos);
+			for (const StaticPlane & plane : scene->planes)
+			{
+				planeDrawingProgram_uModelMatrix->setMat4(plane.modelMatrix);
+				glDrawElements(GL_TRIANGLES, planeMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
+			}
 			glDisableVertexAttribArray(0);
 		}
 	}
@@ -206,9 +216,10 @@ struct ParticleRenderer
 		checkCudaErrors(cudaGraphicsUnmapResources(1, &ssboGraphicsRes, 0));
 	}
 
-	float radius;
 	std::shared_ptr<Mesh> particleMesh;
 	std::shared_ptr<Mesh> planeMesh;
+
+	const std::shared_ptr<Scene> scene;
 	Camera camera;
 	GLuint ssboBuffer;
 	cudaGraphicsResource_t ssboGraphicsRes;
