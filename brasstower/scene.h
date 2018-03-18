@@ -4,13 +4,13 @@
 #include <vector>
 #include <glm/glm.hpp>
 
-struct StaticPlane
+struct Plane
 {
 	glm::vec3 origin;
 	glm::vec3 dir;
 	glm::mat4 modelMatrix;
 
-	StaticPlane(const glm::vec3 & origin, const glm::vec3 & dir) :
+	Plane(const glm::vec3 & origin, const glm::vec3 & dir) :
 		origin(origin), dir(dir)
 	{
 		// compute orthonormal bases for constructing rotation part of the matrix
@@ -32,7 +32,8 @@ struct StaticPlane
 
 struct Scene
 {
-	std::vector<StaticPlane> planes;
+	std::vector<Plane> planes;
 	size_t numParticles;
+	size_t numMaxParticles;
 	float radius;
 };

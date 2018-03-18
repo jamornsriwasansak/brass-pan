@@ -76,7 +76,7 @@ static GLFWwindow* InitGL(const size_t width, const size_t height)
 		throw new std::exception("Failed to initialize GLFW\n");
 	}
 
-	glfwWindowHint(GLFW_SAMPLES, 16); // antialiasing
+	glfwWindowHint(GLFW_SAMPLES, 4); // antialiasing
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4); 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); 
@@ -96,6 +96,8 @@ static GLFWwindow* InitGL(const size_t width, const size_t height)
 
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glfwSwapInterval(1); // vsync
+
 	return window;
 }
 
@@ -193,7 +195,7 @@ struct ParticleRenderer
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planeMesh->mGl.mIndicesBuffer->mHandle);
 			planeDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
 			planeDrawingProgram_uCameraPosition->setVec3(camera.pos);
-			for (const StaticPlane & plane : scene->planes)
+			for (const Plane & plane : scene->planes)
 			{
 				planeDrawingProgram_uModelMatrix->setMat4(plane.modelMatrix);
 				glDrawElements(GL_TRIANGLES, planeMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);

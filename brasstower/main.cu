@@ -57,12 +57,6 @@ Error:
 	return cudaStatus;
 }
 
-__global__ void mapPositions(float4 * positions, float p)
-{
-	int i = threadIdx.x;
-	positions[i] = make_float4(0.f, p + i * 10.0f + 0.f, 0.f, 0.0f);
-}
-
 GLFWwindow * window;
 ParticleRenderer * renderer;
 ParticleSolver * solver;
@@ -118,14 +112,21 @@ void updateControl()
 std::shared_ptr<Scene> initSimpleScene()
 {
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
-	scene->planes.push_back(StaticPlane(glm::vec3(0), glm::vec3(0, 1, 0)));
-	scene->planes.push_back(StaticPlane(glm::vec3(0, 0, -0.19), glm::normalize(glm::vec3(0, 0, 1))));
-	scene->planes.push_back(StaticPlane(glm::vec3(0, 0, 0.19), glm::normalize(glm::vec3(0, 0, -1))));
-	scene->planes.push_back(StaticPlane(glm::vec3(-0.28, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(StaticPlane(glm::vec3(0.28, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
-	scene->numParticles = 10;
+	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, -0.19), glm::normalize(glm::vec3(0, 0, 1))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, 0.19), glm::normalize(glm::vec3(0, 0, -1))));
+	scene->planes.push_back(Plane(glm::vec3(-0.28, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(0.28, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	//scene->numParticles = 10;
+	scene->numMaxParticles = 1000;
 	scene->radius = 0.01f;
 	return scene;
+}
+
+__global__ void mapPositions(float4 * ssboDptr, float3 * position)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	ssboDptr[i] = make_float4(position[i].x, position[i].y, position[i].z, 0.0f);
 }
 
 int main()
@@ -141,16 +142,19 @@ int main()
 	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
 	solver = new ParticleSolver(scene);
 
+	solver->addParticles(glm::ivec3(4), glm::vec3(0, 1, 0), glm::vec3(0.01f * 2.0f), 1.0f);
+
 	do
 	{
 		updateControl();
 
+		// solver update
+		solver->update();
+
+		// renderer update
 		float4 *dptr = renderer->mapSsbo();
-		mapPositions<<<1, numParticles>>>(dptr, p);
+		mapPositions<<<1, scene->numParticles>>>(dptr, solver->devPosition);
 		renderer->unmapSsbo();
-
-		//p += 0.1f;
-
 		renderer->update();
 
 		// Swap buffers
@@ -159,4 +163,8 @@ int main()
 
 	} // Check if the ESC key was pressed or the window was closed
 	while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(window) == 0);
+
+	delete renderer;
+	delete solver;
+	return 0;
 }

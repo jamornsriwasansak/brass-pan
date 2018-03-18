@@ -15,7 +15,7 @@ layout (std430, binding=0) buffer ParticlePositions
 
 void main()
 {
-	vPosition = vertexPos * uRadius + vec3(positions[gl_InstanceID]) / 100.0;
+	vPosition = vertexPos * uRadius + vec3(positions[gl_InstanceID]);
 	vNormal = vertexPos;
 	gl_Position = uMVP * vec4(vPosition, 1.0);
 }
