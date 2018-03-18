@@ -104,8 +104,6 @@ static GLFWwindow* InitGL(const size_t width, const size_t height)
 // should be singleton
 struct ParticleRenderer
 {
-	const size_t MaxNumParticles = 1000;
-
 	ParticleRenderer(const glm::uvec2 & resolution, const std::shared_ptr<Scene> & scene):
 		camera(glm::vec3(0, 1, 1), glm::vec3(0), glm::radians(50.0f), (float)resolution.x / (float)resolution.y),
 		scene(scene)
@@ -116,7 +114,7 @@ struct ParticleRenderer
 		// init ssbobuffer and register in cuda
 		glGenBuffers(1, &ssboBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboBuffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 4 * sizeof(float) * MaxNumParticles, 0, GL_DYNAMIC_COPY);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 4 * sizeof(float) * scene->numMaxParticles, 0, GL_DYNAMIC_COPY);
 		checkCudaErrors(cudaGraphicsGLRegisterBuffer(&ssboGraphicsRes, ssboBuffer, cudaGraphicsRegisterFlagsWriteDiscard));
 
 		glEnable(GL_DEPTH_TEST);
