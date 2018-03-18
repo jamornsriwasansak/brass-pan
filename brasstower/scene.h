@@ -7,14 +7,14 @@
 struct Plane
 {
 	glm::vec3 origin;
-	glm::vec3 dir;
+	glm::vec3 normal;
 	glm::mat4 modelMatrix;
 
-	Plane(const glm::vec3 & origin, const glm::vec3 & dir) :
-		origin(origin), dir(dir)
+	Plane(const glm::vec3 & origin, const glm::vec3 & normal) :
+		origin(origin), normal(normal)
 	{
 		// compute orthonormal bases for constructing rotation part of the matrix
-		glm::vec3 zBasis = dir;
+		glm::vec3 zBasis = normal;
 		glm::vec3 xBasis, yBasis;
 
 		float sign = std::copysign((float)(1.0), zBasis.z);

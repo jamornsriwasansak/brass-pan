@@ -105,7 +105,7 @@ static GLFWwindow* InitGL(const size_t width, const size_t height)
 struct ParticleRenderer
 {
 	ParticleRenderer(const glm::uvec2 & resolution, const std::shared_ptr<Scene> & scene):
-		camera(glm::vec3(0, 1, 1), glm::vec3(0), glm::radians(50.0f), (float)resolution.x / (float)resolution.y),
+		camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)resolution.x / (float)resolution.y),
 		scene(scene)
 	{
 		glGenVertexArrays(1, &globalVaoHandle);

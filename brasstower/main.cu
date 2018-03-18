@@ -68,7 +68,7 @@ void updateControl()
 			control -= glm::vec3(0.f, 1.f, 0.f);
 		float length = glm::length(control);
 		control = length > 0 ? control / length : control;
-		renderer->camera.shift(control * 0.01f);
+		renderer->camera.shift(control * 0.1f);
 	}
 }
 
@@ -76,13 +76,13 @@ std::shared_ptr<Scene> initSimpleScene()
 {
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
 	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, -0.19), glm::normalize(glm::vec3(0, 0, 1))));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, 0.19), glm::normalize(glm::vec3(0, 0, -1))));
-	scene->planes.push_back(Plane(glm::vec3(-0.28, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(Plane(glm::vec3(0.28, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
+	scene->planes.push_back(Plane(glm::vec3(-2.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
 	//scene->numParticles = 10;
 	scene->numMaxParticles = 1000;
-	scene->radius = 0.01f;
+	scene->radius = 0.05f;
 	return scene;
 }
 
@@ -100,7 +100,7 @@ int main()
 	std::shared_ptr<Scene> scene = initSimpleScene();
 	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
 	solver = new ParticleSolver(scene);
-	solver->addParticles(glm::ivec3(4), glm::vec3(0, 1, 0), glm::vec3(0.01f * 2.0f), 1.0f);
+	solver->addParticles(glm::ivec3(1, 4, 1), glm::vec3(0, 2, 0), glm::vec3(scene->radius * 2.0f), 1.0f);
 
 	// fps counter
 	std::chrono::high_resolution_clock::time_point lastUpdateTime = std::chrono::high_resolution_clock::now();
@@ -111,11 +111,11 @@ int main()
 		updateControl();
 
 		// solver update
-		solver->update();
+		solver->update(3, 1.0f / 60.0f);
 
 		// renderer update
 		float4 *dptr = renderer->mapSsbo();
-		mapPositions<<<1, scene->numParticles>>>(dptr, solver->devPosition);
+		mapPositions<<<1, scene->numParticles>>>(dptr, solver->devPositions);
 		renderer->unmapSsbo();
 		renderer->update();
 
