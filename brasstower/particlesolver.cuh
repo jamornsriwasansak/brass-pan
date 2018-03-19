@@ -69,6 +69,32 @@ __global__ void initializeBlockPosition(float3 * positions, const int numParticl
 	positions[i + offset] = make_float3(x, y, z) * step + startPosition;
 }
 
+// GRID //
+// from White Paper "Particles" by SIMON GREEN 
+
+__device__ int3 calcGridPos(float3 position, float3 origin, float3 cellSize)
+{
+	return make_int3((position - origin) / cellSize);
+}
+
+__device__ int calcGridAddress(int3 gridPos, int3 gridSize)
+{
+	//gridPos = max(make_int3(0), min(gridPos, gridSize)); // clamp
+	return (gridPos.z * gridSize.y * gridSize.x) + (gridPos.y * gridSize.x) + gridPos.x;
+}
+
+__global__ void updateGridId(int * gridIds, int * particleIds, float3 * positions, float3 cellOrigin, float3 cellSize, int3 gridSize, const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+
+	int3 gridPos = calcGridPos(positions[i], cellOrigin, cellSize);
+	int gridId = calcGridAddress(gridPos, gridSize);
+
+	gridIds[i] = gridId;
+	particleIds[i] = i;
+}
+
 // SOLVER //
 
 __global__ void applyForces(float3 * velocities, float * invMass, const int numParticles, const float deltaTime)
@@ -150,6 +176,9 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devDeltas, scene->numMaxParticles * sizeof(float3)));
 
+		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devParticleId, scene->numMaxParticles * sizeof(int)));
+
 		checkCudaErrors(cudaMemset(devPositions, 0, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMemset(devNewPositions, 0, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMemset(devTmpNewPositions, 0, scene->numMaxParticles * sizeof(float3)));
@@ -220,6 +249,9 @@ struct ParticleSolver
 
 	~ParticleSolver()
 	{
+		checkCudaErrors(cudaFree(devCellId));
+		checkCudaErrors(cudaFree(devParticleId));
+
 		checkCudaErrors(cudaFree(devPositions));
 		checkCudaErrors(cudaFree(devNewPositions));
 		checkCudaErrors(cudaFree(devTmpNewPositions));
@@ -227,6 +259,10 @@ struct ParticleSolver
 		checkCudaErrors(cudaFree(devInvMasses));
 		checkCudaErrors(cudaFree(devDeltas));
 	}
+	
+	// hash grid
+	int* devCellId;
+	int* devParticleId;
 
 	// particle system data
 	float3 *devPositions;
