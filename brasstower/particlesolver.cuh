@@ -202,11 +202,12 @@ struct ParticleSolver
 
 	~ParticleSolver()
 	{
-		checkCudaErrors(cudaFree(&devPositions));
-		checkCudaErrors(cudaFree(&devNewPositions));
-		checkCudaErrors(cudaFree(&devVelocities));
-		checkCudaErrors(cudaFree(&devInvMasses));
-		checkCudaErrors(cudaFree(&devDeltas));
+		checkCudaErrors(cudaFree(devPositions));
+		checkCudaErrors(cudaFree(devNewPositions));
+		checkCudaErrors(cudaFree(devNewTmpPositions));
+		checkCudaErrors(cudaFree(devVelocities));
+		checkCudaErrors(cudaFree(devInvMasses));
+		checkCudaErrors(cudaFree(devDeltas));
 	}
 
 	// particle system data
