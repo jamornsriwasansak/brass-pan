@@ -81,14 +81,15 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->planes.push_back(Plane(glm::vec3(-2.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
 	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
 	//scene->numParticles = 10;
-	scene->numMaxParticles = 1000;
+	scene->numMaxParticles = 10000;
 	scene->radius = 0.05f;
 	return scene;
 }
 
-__global__ void mapPositions(float4 * ssboDptr, float3 * position)
+__global__ void mapPositions(float4 * ssboDptr, float3 * position, const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
 	ssboDptr[i] = make_float4(position[i].x, position[i].y, position[i].z, 0.0f);
 }
 
@@ -100,7 +101,8 @@ int main()
 	std::shared_ptr<Scene> scene = initSimpleScene();
 	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
 	solver = new ParticleSolver(scene);
-	solver->addParticles(glm::ivec3(1, 4, 1), glm::vec3(0, 2, 0), glm::vec3(scene->radius * 2.0f), 1.0f);
+	solver->addParticles(glm::ivec3(1, 1, 1), glm::vec3(0, 1, 0), glm::vec3(scene->radius * 2.0f), 1.0f);
+	solver->addParticles(glm::ivec3(20, 20, 20), glm::vec3(0.01, 0, 0.01), glm::vec3(scene->radius * 2.0f), 1.0f);
 
 	// fps counter
 	std::chrono::high_resolution_clock::time_point lastUpdateTime = std::chrono::high_resolution_clock::now();
@@ -115,7 +117,9 @@ int main()
 
 		// renderer update
 		float4 *dptr = renderer->mapSsbo();
-		mapPositions<<<1, scene->numParticles>>>(dptr, solver->devPositions);
+		int numBlocks, numThreads;
+		GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
+		mapPositions<<<numBlocks, numThreads>>>(dptr, solver->devPositions, scene->numParticles);
 		renderer->unmapSsbo();
 		renderer->update();
 
