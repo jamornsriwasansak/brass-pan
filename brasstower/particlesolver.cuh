@@ -4,16 +4,20 @@
 #include <cuda_gl_interop.h>
 #include <conio.h>
 
+#ifndef __INTELLISENSE__
+#include <cub/cub.cuh>
+#endif
 #include "cuda/helper.cuh"
 #include "cuda/cudaglm.cuh"
 #include "scene.h"
 
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
-	*numThreads = 512;
+	*numThreads = 256;
 	*numBlocks = static_cast<int>(ceil((float)k / (float)(*numThreads)));
 }
 
+/*
 void print(float3 * dev, int size)
 {
 	float3 * tmp = (float3 *)malloc(sizeof(float3) * size);
@@ -27,17 +31,36 @@ void print(float3 * dev, int size)
 	std::cout << std::endl;
 	free(tmp);
 }
+*/
 
-
-void print(float * dev, int size)
+template <typename T>
+void print(T * dev, int size)
 {
-	float * tmp = (float *)malloc(sizeof(float) * size);
-	cudaMemcpy(tmp, dev, sizeof(float) * size, cudaMemcpyDeviceToHost);
+	T * tmp = (T *)malloc(sizeof(T) * size);
+	cudaMemcpy(tmp, dev, sizeof(T) * size, cudaMemcpyDeviceToHost);
 	for (int i = 0; i < size; i++)
 	{
 		std::cout << tmp[i];
 		if (i != size - 1)
 			std::cout << ",";
+	}
+	std::cout << std::endl;
+	free(tmp);
+}
+
+template <typename T>
+void printPair(T * dev, int size)
+{
+	T * tmp = (T *)malloc(sizeof(T) * size);
+	cudaMemcpy(tmp, dev, sizeof(T) * size, cudaMemcpyDeviceToHost);
+	for (int i = 0; i < size; i++)
+	{
+		if (tmp[i] != -1)
+		{
+			std::cout << i << ":" << tmp[i];
+			if (i != size - 1)
+				std::cout << ",";
+		}
 	}
 	std::cout << std::endl;
 	free(tmp);
@@ -79,7 +102,7 @@ __device__ int3 calcGridPos(float3 position, float3 origin, float3 cellSize)
 
 __device__ int calcGridAddress(int3 gridPos, int3 gridSize)
 {
-	//gridPos = max(make_int3(0), min(gridPos, gridSize)); // clamp
+	gridPos = max(make_int3(0), min(gridPos, gridSize)); // clamp
 	return (gridPos.z * gridSize.y * gridSize.x) + (gridPos.y * gridSize.x) + gridPos.x;
 }
 
@@ -93,6 +116,24 @@ __global__ void updateGridId(int * gridIds, int * particleIds, float3 * position
 
 	gridIds[i] = gridId;
 	particleIds[i] = i;
+}
+
+__global__ void findStartId(int * cellStart, int * sortedGridIds, const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+
+	int cell = sortedGridIds[i];
+
+	if (i > 0)
+	{
+		if (cell != sortedGridIds[i - 1]) 
+			cellStart[cell] = i;
+	}
+	else
+	{
+		cellStart[cell] = i;
+	}
 }
 
 // SOLVER //
@@ -130,7 +171,8 @@ __global__ void planeStabilize(float3 * positions, float3 * newPositions, const 
 	newPositions[i] += distance * planeNormal;
 }
 
-__global__ void particlePlaneCollisionConstraint(float3 * newPositions, float3 * positions, const int numParticles, float3 planeOrigin, float3 planeNormal, const float radius)
+__global__ void particlePlaneCollisionConstraint(float3 * newPositions, float3 * positions, const int numParticles,
+												 float3 planeOrigin, float3 planeNormal, const float radius)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -143,7 +185,62 @@ __global__ void particlePlaneCollisionConstraint(float3 * newPositions, float3 *
 	positions[i] += (2.0f * diffPosition + distance) * planeNormal / 10.0f;
 }
 
-__global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, float3 * newPositionsPrev, const int numParticles, const float radius)
+// resolve particle - particle collision inside the same cell
+__device__ float3 particleParticleCellCollisionConstraint(int particleId, int3 gridPos, float3 position, float3 * positions, int* sortedCellId, int* sortedParticleId, int* cellStart,
+														  float3 cellOrigin, float3 cellSize, int3 gridSize, const int numParticles, const float radius)
+{
+	float3 move = make_float3(0.0f);
+	int gridAddress = calcGridAddress(gridPos, gridSize);
+	int bucketStart = cellStart[gridAddress];
+	if (bucketStart == -1) return move;
+
+	// loop inside the bucket
+	for (int i = 0; i < numParticles; i++)
+	{
+		// info from an another particle
+		int gridAddress2 = sortedCellId[bucketStart + i];
+		if (gridAddress2 != gridAddress) break;
+
+		int particleId2 = sortedParticleId[bucketStart + i];
+		float3 position2 = positions[particleId2];
+
+		if (particleId2 != particleId)
+		{
+			float3 diff = position - position2;
+			float dist2 = length2(diff);
+			if (dist2 < radius * radius * 4.0f)
+			{
+				float dist = sqrtf(dist2);
+				move -= diff * (0.5f - radius / dist);
+			}
+		}
+	}
+	return move;
+}
+
+__global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, float3 * newPositionsPrev,
+													int* sortedCellId, int* sortedParticleId, int* cellStart, // hash grid
+													float3 cellOrigin, float3 cellSize, int3 gridSize,
+													const int numParticles, const float radius)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+
+	float3 position = newPositionsPrev[i];
+	int3 gridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
+
+	float3 move = make_float3(0.0f);
+
+	for (int z = -1; z <= 1; z++)
+		for (int y = -1; y <= 1; y++)
+			for (int x = -1; x <= 1; x++)
+				move += particleParticleCellCollisionConstraint(i, gridPos + make_int3(x, y, z), position, newPositionsPrev, sortedCellId, sortedParticleId, cellStart, cellOrigin, cellSize, gridSize, numParticles, radius);
+
+	newPositionsNext[i] = position + move;
+}
+
+__global__ void particleParticleCollisionConstraintBrute(float3 * newPositionsNext, float3 * newPositionsPrev, 
+													const int numParticles, const float radius)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -152,6 +249,7 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 	// query all neighbours and solve for collision
 	for (int j = 0; j < numParticles; j++)
 	{
+
 		float3 diff = newPositionsPrev[i] - newPositionsPrev[j];
 		float dist2 = length2(diff);
 		if ((i != j) && (dist2 < radius * radius * 4.0f))
@@ -167,21 +265,27 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 struct ParticleSolver
 {
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
-		scene(scene)
+		scene(scene),
+		cellOrigin(make_float3(-5, 0, -5)),
+		cellSize(make_float3(scene->radius * 2.0f)),
+		gridSize(make_int3(64))
 	{
 		checkCudaErrors(cudaMalloc(&devPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
-		checkCudaErrors(cudaMalloc(&devTmpNewPositions, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devTempNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devDeltas, scene->numMaxParticles * sizeof(float3)));
 
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devParticleId, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devSortedCellId, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devSortedParticleId, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devCellStart, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
 
 		checkCudaErrors(cudaMemset(devPositions, 0, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMemset(devNewPositions, 0, scene->numMaxParticles * sizeof(float3)));
-		checkCudaErrors(cudaMemset(devTmpNewPositions, 0, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMemset(devTempNewPositions, 0, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMemset(devVelocities, 0, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMemset(devInvMasses, 0, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMemset(devDeltas, 0, scene->numMaxParticles * sizeof(float3)));
@@ -203,8 +307,17 @@ struct ParticleSolver
 
 		initializeDevFloat<<<numBlocks, numThreads>>>(devInvMasses, numParticles, 1.0f / mass, scene->numParticles);
 		initializeBlockPosition<<<numBlocks, numThreads>>>(devPositions, numParticles, make_int3(dimension), make_float3(startPosition), make_float3(step), scene->numParticles);
-		//initializeBlockPosition<<<1, numParticles>>>(devNewPositions, make_int3(dimension), make_float3(startPosition), make_float3(step), scene->numParticles);
 		scene->numParticles += numParticles;
+	}
+
+	void updateTempStorageSize(const size_t newSize)
+	{
+		if (devTempStorageSize < newSize)
+		{
+			if (devTempStorageSize != 0) { checkCudaErrors(cudaFree(devTempStorage)); }
+			checkCudaErrors(cudaMalloc(&devTempStorage, newSize));
+			devTempStorageSize = newSize;
+		}
 	}
 
 	void update(const int numSubTimeStep, const float deltaTime)
@@ -212,19 +325,60 @@ struct ParticleSolver
 		float subDeltaTime = deltaTime / (float)numSubTimeStep;
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
+
 		for (int i = 0;i < numSubTimeStep;i++)
 		{ 
-			applyForces<<<numBlocks, numThreads>>>(devVelocities, devInvMasses, scene->numParticles, subDeltaTime);
-			predictPositions<<<numBlocks, numThreads>>>(devNewPositions, devPositions, devVelocities, scene->numParticles, subDeltaTime);
+			applyForces<<<numBlocks, numThreads>>>(devVelocities,
+												   devInvMasses,
+												   scene->numParticles,
+												   subDeltaTime);
+			predictPositions<<<numBlocks, numThreads>>>(devNewPositions,
+														devPositions,
+														devVelocities,
+														scene->numParticles,
+														subDeltaTime);
 
 			// stabilize iterations
 			for (int i = 0; i < 2; i++)
 			{
 				for (const Plane & plane : scene->planes)
 				{
-					planeStabilize<<<numBlocks, numThreads>>>(devPositions, devNewPositions, scene->numParticles, make_float3(plane.origin), make_float3(plane.normal), scene->radius);
+					planeStabilize<<<numBlocks, numThreads>>>(devPositions,
+															  devNewPositions,
+															  scene->numParticles,
+															  make_float3(plane.origin),
+															  make_float3(plane.normal),
+															  scene->radius);
 				}
 			}
+
+
+			// compute grid
+			cudaMemset(devCellStart, -1, gridSize.x * gridSize.y * gridSize.z * sizeof(int));
+			updateGridId<<<numBlocks, numThreads>>>(devCellId,
+													devParticleId,
+													devNewPositions,
+													cellOrigin,
+													cellSize,
+													gridSize,
+													scene->numParticles);
+			size_t tempStorageSize;
+			cub::DeviceRadixSort::SortPairs(NULL,
+											tempStorageSize,
+											devCellId,
+											devSortedCellId,
+											devParticleId,
+											devSortedParticleId,
+											scene->numParticles);
+			updateTempStorageSize(tempStorageSize);
+			cub::DeviceRadixSort::SortPairs(devTempStorage,
+											devTempStorageSize,
+											devCellId,
+											devSortedCellId,
+											devParticleId,
+											devSortedParticleId,
+											scene->numParticles);
+			findStartId<<<numBlocks, numThreads>>>(devCellStart, devSortedCellId, scene->numParticles);
 
 			// projecting constraints iterations
 			for (int i = 0; i < 10; i++)
@@ -232,15 +386,41 @@ struct ParticleSolver
 				// solving all plane collisions
 				for (const Plane & plane : scene->planes)
 				{
-					particlePlaneCollisionConstraint<<<numBlocks, numThreads>>>(devNewPositions, devPositions, scene->numParticles, make_float3(plane.origin), make_float3(plane.normal), scene->radius);
+					particlePlaneCollisionConstraint<<<numBlocks, numThreads>>>(devNewPositions,
+																				devPositions,
+																				scene->numParticles,
+																				make_float3(plane.origin),
+																				make_float3(plane.normal),
+																				scene->radius);
 				}
 
+
 				// solving all particles collisions
-				particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devTmpNewPositions, devNewPositions, scene->numParticles, scene->radius);
-				std::swap(devTmpNewPositions, devNewPositions);
+				/*
+				particleParticleCollisionConstraintBrute<<<numBlocks, numThreads>>>(devTempNewPositions,
+																			   devNewPositions,
+																			   scene->numParticles,
+																			   scene->radius);
+																			   */
+				// solving all particles collisions
+				particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devTempNewPositions,
+																			   devNewPositions,
+																			   devSortedCellId,
+																			   devSortedParticleId,
+																			   devCellStart,
+																			   cellOrigin,
+																			   cellSize,
+																			   gridSize,
+																			   scene->numParticles,
+																			   scene->radius);
+				std::swap(devTempNewPositions, devNewPositions);
 			}
 
-			updateVelocity<<<1, scene->numParticles>>>(devVelocities, devNewPositions, devPositions, scene->numParticles, 1.0f / subDeltaTime);
+			updateVelocity<<<1, scene->numParticles>>>(devVelocities,
+													   devNewPositions,
+													   devPositions,
+													   scene->numParticles,
+													   1.0f / subDeltaTime);
 			std::swap(devNewPositions, devPositions); // update position
 
 			//cudaDeviceSynchronize(); for printf
@@ -251,24 +431,37 @@ struct ParticleSolver
 	{
 		checkCudaErrors(cudaFree(devCellId));
 		checkCudaErrors(cudaFree(devParticleId));
+		checkCudaErrors(cudaFree(devCellStart));
+		if (devTempStorageSize != 0) { checkCudaErrors(cudaFree(devTempStorage)); }
 
 		checkCudaErrors(cudaFree(devPositions));
 		checkCudaErrors(cudaFree(devNewPositions));
-		checkCudaErrors(cudaFree(devTmpNewPositions));
+		checkCudaErrors(cudaFree(devTempNewPositions));
 		checkCudaErrors(cudaFree(devVelocities));
 		checkCudaErrors(cudaFree(devInvMasses));
 		checkCudaErrors(cudaFree(devDeltas));
 	}
+
+	const float3 cellOrigin;
+	const float3 cellSize;
+	const int3 gridSize;
+
+	// temp storage for cub
+	void *devTempStorage;
+	size_t devTempStorageSize = 0;
 	
 	// hash grid
 	int* devCellId;
 	int* devParticleId;
+	int* devSortedCellId;
+	int* devSortedParticleId;
+	int* devCellStart;
 
 	// particle system data
 	float3 *devPositions;
 	float3 *devVelocities;
 	float3 *devNewPositions;
-	float3 *devTmpNewPositions;
+	float3 *devTempNewPositions;
 	float *devInvMasses;
 
 	// 2 buffers
