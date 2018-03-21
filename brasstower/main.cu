@@ -82,7 +82,7 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
 	//scene->numParticles = 10;
 	scene->numMaxParticles = 10000;
-	scene->radius = 0.10f;
+	scene->radius = 0.05f;
 	return scene;
 }
 

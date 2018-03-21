@@ -215,17 +215,19 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 	}
 #else
 	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
+	int3 start = max(make_int3(0), centerGridPos - make_int3(1)) - centerGridPos;
+	int3 end = min(gridSize - make_int3(1), centerGridPos + make_int3(1)) - centerGridPos;
 
-	for (int z = -1; z <= 2; z++)
-		for (int x = -1; x <= 2; x++)
-			for (int y = -1; y <= 2; y++)
+	for (int z = start.z; z <= end.z; z++)
+		for (int y = start.y; y <= end.y; y++)
+			for (int x = start.x; x <= end.x; x++)
 			{
 				int3 gridPos = centerGridPos + make_int3(x, y, z);
 				int gridAddress = calcGridAddress(gridPos, gridSize);
 				int bucketStart = cellStart[gridAddress];
 				if (bucketStart == -1) { continue; }
 
-				for (int k = 0; k < numParticles - bucketStart ; k++)
+				for (int k = 0; k < numParticles - bucketStart; k++)
 				{
 					int gridAddress2 = sortedCellId[bucketStart + k];
 					int particleId2 = sortedParticleId[bucketStart + k];
@@ -243,7 +245,6 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 						}
 					}
 				}
-				//position = particleParticleCellCollisionConstraint(i, gridPos + make_int3(x, y, z), position, newPositionsPrev, sortedCellId, sortedParticleId, cellStart, cellOrigin, cellSize, gridSize, numParticles, radius);
 			}
 #endif
 
@@ -408,6 +409,7 @@ struct ParticleSolver
 																						gridSize,
 																						scene->numParticles,
 																						scene->radius);
+					//cudaDeviceSynchronize();
 					std::swap(devTempNewPositions, devNewPositions);
 				}
 			}
