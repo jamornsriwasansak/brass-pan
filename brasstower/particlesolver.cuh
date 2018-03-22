@@ -8,7 +8,6 @@
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/fill.h>
-#include <thrust/execution_policy.h>
 
 #include "cuda/helper.cuh"
 #include "cuda/cudaglm.cuh"
@@ -22,22 +21,6 @@ void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 	*numBlocks = static_cast<int>(ceil((float)k / (float)(*numThreads)));
 }
 
-/*
-void print(float3 * dev, int size)
-{
-	float3 * tmp = (float3 *)malloc(sizeof(float3) * size);
-	cudaMemcpy(tmp, dev, sizeof(float3) * size, cudaMemcpyDeviceToHost);
-	for (int i = 0; i < size; i++)
-	{
-		std::cout << "(" << tmp[i].x << " " << tmp[i].y << " " << tmp[i].z << ")";
-		if (i != size - 1)
-			std::cout << ",";
-	}
-	std::cout << std::endl;
-	free(tmp);
-}
-*/
-
 template <typename T>
 void print(T * dev, int size)
 {
@@ -46,6 +29,21 @@ void print(T * dev, int size)
 	for (int i = 0; i < size; i++)
 	{
 		std::cout << tmp[i];
+		if (i != size - 1)
+			std::cout << ",";
+	}
+	std::cout << std::endl;
+	free(tmp);
+}
+
+template <>
+void print<float3>(float3 * dev, int size)
+{
+	float3 * tmp = (float3 *)malloc(sizeof(float3) * size);
+	cudaMemcpy(tmp, dev, sizeof(float3) * size, cudaMemcpyDeviceToHost);
+	for (int i = 0; i < size; i++)
+	{
+		std::cout << "(" << tmp[i].x << " " << tmp[i].y << " " << tmp[i].z << ")";
 		if (i != size - 1)
 			std::cout << ",";
 	}
@@ -362,7 +360,7 @@ struct ParticleSolver
 			{
 				// compute grid
 				{
-					thrust::fill(thrust::device, devCellStart->begin(), devCellStart->begin() + scene->numParticles, -1);
+					thrust::fill(devCellStart->begin(), devCellStart->begin() + scene->numParticles, -1);
 					updateGridId<<<numBlocks, numThreads>>>(ToRaw(devCellId),
 															ToRaw(devParticleId),
 															ToRaw(devNewPositions),

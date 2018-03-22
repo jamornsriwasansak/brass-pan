@@ -28,8 +28,6 @@ void updateControl()
 {
 	// mouse control
 	{
-		static bool isHoldingLeftMouse = false;
-		static bool isHoldingRightMouse = false;
 		static glm::dvec2 prevMousePos = [&]()
 		{
 			glm::dvec2 mousePos;
@@ -80,8 +78,8 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
 	scene->planes.push_back(Plane(glm::vec3(-2.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
 	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
-	//scene->numParticles = 10;
-	scene->numMaxParticles = 10000;
+	scene->numParticles = 0;
+	scene->numMaxParticles = 50000;
 	scene->radius = 0.05f;
 	return scene;
 }
@@ -102,7 +100,7 @@ int main()
 	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
 	solver = new ParticleSolver(scene);
 	solver->addParticles(glm::ivec3(1, 1, 1), glm::vec3(0, 1, 0), glm::vec3(scene->radius * 2.0f), 1.0f);
-	solver->addParticles(glm::ivec3(5, 90, 5), glm::vec3(0 - scene->radius, scene->radius, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.0f);
+	solver->addParticles(glm::ivec3(40, 50, 20), glm::vec3(0 - scene->radius, scene->radius, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.0f);
 
 	// fps counter
 	std::chrono::high_resolution_clock::time_point lastUpdateTime = std::chrono::high_resolution_clock::now();
@@ -113,7 +111,7 @@ int main()
 		updateControl();
 
 		// solver update
-		solver->update(3, 1.0f / 60.0f);
+		solver->update(2, 1.0f / 60.0f);
 
 		// renderer update
 		float4 *dptr = renderer->mapSsbo();
