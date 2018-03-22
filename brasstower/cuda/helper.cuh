@@ -1,5 +1,6 @@
 #pragma once
 #include <cuda_runtime.h>
+#include <cstdio>
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -285,4 +286,14 @@ void check(T result, char const *const func, const char *const file, int const l
 	}
 }
 
+void checkLastError(const char *const file, int const line)
+{
+	cudaError_t error = cudaGetLastError();
+	if (error)
+	{
+		fprintf(stderr, "CUDA last error at %s:%d %s\n", file, line, _cudaGetErrorEnum(error));
+	}
+}
+
 #define checkCudaErrors(val)           check ( (val), #val, __FILE__, __LINE__ )
+#define checkCudaLastErrors()          checkLastError (__FILE__, __LINE__ )

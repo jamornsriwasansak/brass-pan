@@ -185,6 +185,34 @@ __global__ void particlePlaneCollisionConstraint(float3 * newPositions, float3 *
 	positions[i] += (2.0f * diffPosition + distance) * planeNormal / 10.0f;
 }
 
+__global__ void checkIncorrectGridId(int* cellIds, int* particleIds, float3 * positions, float3 cellOrigin, float3 cellSize, int3 gridSize, const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+
+	int cellId = cellIds[i];
+	int particleId = particleIds[i];
+
+	float3 position = positions[particleId];
+	int3 gridPos = calcGridPos(position, cellOrigin, cellSize);
+	int gridAddress = calcGridAddress(gridPos, gridSize);
+
+	if (gridAddress != cellId)
+	{
+		printf("checkIncorrectGridId: error at %d (%d vs %d)\n", i, cellId, gridAddress);
+	}
+}
+
+__global__ void checkEqual(int* a, int * b, const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+	if (a[i] != b[i])
+	{
+		printf("checkEqual: error at %d (%d vs %d)\n", i, a[i], b[i]);
+	}
+}
+
 __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, float3 * newPositionsPrev,
 													int* sortedCellId, int* sortedParticleId, int* cellStart, // hash grid
 													float3 cellOrigin, float3 cellSize, int3 gridSize,
@@ -195,8 +223,8 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 
 	float3 positionPrev = newPositionsPrev[i];
 	float3 positionNext = positionPrev;
+	float3 positionNextBrute = positionPrev;
 
-#if 0
 	// query all neighbours and solve for collision
 	for (int j = 0; j < numParticles; j++)
 	{
@@ -209,11 +237,11 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 				float dist = sqrtf(dist2);
 				float3 normalizedDiff = diff / dist;
 				float3 offset = diff * (0.5f - radius / dist);
-				positionNext -= offset;
+				positionNextBrute -= offset;
 			}
 		}
 	}
-#else
+
 	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
 	int3 start = max(make_int3(0), centerGridPos - make_int3(1)) - centerGridPos;
 	int3 end = min(gridSize - make_int3(1), centerGridPos + make_int3(1)) - centerGridPos;
@@ -246,7 +274,59 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 					}
 				}
 			}
-#endif
+
+	float3 diffResult = positionNext - positionNextBrute;
+	if (dot(diffResult, diffResult) >= 0.05)
+	{
+		for (int j = 0; j < numParticles; j++)
+		{
+			if (i != j)
+			{
+				float3 diff = positionPrev - newPositionsPrev[j];
+				float dist2 = length2(diff);
+				if (dist2 < radius * radius * 4.0f)
+				{
+					int3 gridPos = calcGridPos(newPositionsPrev[j], cellOrigin, cellSize);
+					printf("[o%d] %d (%d %d %d),", i, j, gridPos.x, gridPos.y, gridPos.z);
+				}
+			}
+		}
+		printf("\n");
+
+		printf("[c%d] %d %d %d\n", i, centerGridPos.x, centerGridPos.y, centerGridPos.z);
+
+		for (int z = start.z; z <= end.z; z++)
+			for (int y = start.y; y <= end.y; y++)
+				for (int x = start.x; x <= end.x; x++)
+				{
+					int3 gridPos = centerGridPos + make_int3(x, y, z);
+					int gridAddress = calcGridAddress(gridPos, gridSize);
+					int bucketStart = cellStart[gridAddress];
+					if (bucketStart == -1) { continue; }
+
+					printf("[%d] %d %d %d -> %d\n", i, gridPos.x, gridPos.y, gridPos.z, gridAddress);
+					for (int k = 0; k < numParticles - bucketStart; k++)
+					{
+						int gridAddress2 = sortedCellId[bucketStart + k];
+						int particleId2 = sortedParticleId[bucketStart + k];
+						int3 gridPos2 = calcGridPos(newPositionsPrev[particleId2], cellOrigin, cellSize);
+						if (gridAddress2 != gridAddress) { break; }
+
+						printf("\t[q%d] %d (%d %d %d -> (%d vs %d)),\n", i, particleId2, gridPos2.x, gridPos2.y, gridPos2.z, gridAddress2, calcGridAddress(gridPos2, gridSize));
+						if (i != particleId2)
+						{
+							float3 position2 = newPositionsPrev[particleId2];
+							float3 diff = positionPrev - position2;
+							float dist2 = length2(diff);
+							if (dist2 < radius * radius * 4.0f)
+							{
+								//printf("[q%d] %d (%d %d %d vs %d %d %d),", i, particleId2, gridPos2.x, gridPos2.y, gridPos2.z, gridPos.x, gridPos.y, gridPos.z);
+							}
+						}
+					}
+				}
+		printf("\n");
+	}
 
 	newPositionsNext[i] = positionNext;
 }
@@ -365,6 +445,12 @@ struct ParticleSolver
 															gridSize,
 															scene->numParticles);
 
+					printf("before sort\n");
+					checkIncorrectGridId<<<numBlocks, numThreads>>>(devCellId, devParticleId, devNewPositions, cellOrigin, cellSize, gridSize, scene->numParticles);
+
+					cudaMemset(devSortedCellId, 0, scene->numParticles * sizeof(int));
+					cudaMemset(devSortedParticleId, 0, scene->numParticles * sizeof(int));
+
 					size_t tempStorageSize;
 					cub::DeviceRadixSort::SortPairs(NULL,
 													tempStorageSize,
@@ -372,7 +458,7 @@ struct ParticleSolver
 													devSortedCellId,
 													devParticleId,
 													devSortedParticleId,
-													scene->numParticles);
+													scene->numParticles, 0, sizeof(int) * 8, 0, true);
 					updateTempStorageSize(tempStorageSize);
 					cub::DeviceRadixSort::SortPairs(devTempStorage,
 													devTempStorageSize,
@@ -380,7 +466,12 @@ struct ParticleSolver
 													devSortedCellId,
 													devParticleId,
 													devSortedParticleId,
-													scene->numParticles);
+													scene->numParticles, 0, sizeof(int) * 8, 0, true);
+
+					printf("after sort\n");
+					checkIncorrectGridId<<<numBlocks, numThreads>>>(devSortedCellId, devSortedParticleId, devNewPositions, cellOrigin, cellSize, gridSize, scene->numParticles);
+					//checkCudaLastErrors();
+					cudaDeviceSynchronize();
 
 					findStartId<<<numBlocks, numThreads>>>(devCellStart, devSortedCellId, scene->numParticles);
 				}
@@ -409,7 +500,7 @@ struct ParticleSolver
 																						gridSize,
 																						scene->numParticles,
 																						scene->radius);
-					//cudaDeviceSynchronize();
+					cudaDeviceSynchronize();
 					std::swap(devTempNewPositions, devNewPositions);
 				}
 			}
