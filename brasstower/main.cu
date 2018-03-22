@@ -119,7 +119,7 @@ int main()
 		float4 *dptr = renderer->mapSsbo();
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
-		mapPositions<<<numBlocks, numThreads>>>(dptr, solver->devPositions, scene->numParticles);
+		mapPositions<<<numBlocks, numThreads>>>(dptr, solver->getDevPositionsRawPointer(), scene->numParticles);
 		renderer->unmapSsbo();
 		renderer->update();
 
