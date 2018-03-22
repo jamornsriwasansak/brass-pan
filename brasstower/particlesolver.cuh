@@ -10,9 +10,6 @@
 #include <thrust/fill.h>
 #include <thrust/execution_policy.h>
 
-#ifndef __INTELLISENSE__
-#include <cub/cub.cuh>
-#endif
 #include "cuda/helper.cuh"
 #include "cuda/cudaglm.cuh"
 #include "scene.h"
