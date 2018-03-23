@@ -105,7 +105,7 @@ __device__ int3 calcGridPos(float3 position, float3 origin, float3 cellSize)
 
 __device__ int calcGridAddress(int3 gridPos, int3 gridSize)
 {
-	//gridPos = max(make_int3(0), min(gridPos, gridSize)); // clamp
+	gridPos = max(make_int3(0), min(gridPos, gridSize - 1)); // clamp
 	return (gridPos.z * gridSize.y * gridSize.x) + (gridPos.y * gridSize.x) + gridPos.x;
 }
 
@@ -228,8 +228,8 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 	float3 positionNext = positionPrev;
 
 	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
-	int3 start = max(make_int3(0), centerGridPos - make_int3(1)) - centerGridPos;
-	int3 end = min(gridSize - make_int3(1), centerGridPos + make_int3(1)) - centerGridPos;
+	int3 start = max(make_int3(0), centerGridPos - 1) - centerGridPos;
+	int3 end = min(gridSize - 1, centerGridPos + 1) - centerGridPos;
 
 	for (int z = start.z; z <= end.z; z++)
 		for (int y = start.y; y <= end.y; y++)
