@@ -138,8 +138,8 @@ struct ParticleRenderer
 	void initParticleDrawingProgram()
 	{
 		particlesDrawingProgram = std::make_shared<OpenglProgram>();
-		particlesDrawingProgram->attachVertexShader(OpenglVertexShader::CreateFromFile("glshaders/simple.vert"));
-		particlesDrawingProgram->attachFragmentShader(OpenglFragmentShader::CreateFromFile("glshaders/simple.frag"));
+		particlesDrawingProgram->attachVertexShader(OpenglVertexShader::CreateFromFile("glshaders/particle.vert"));
+		particlesDrawingProgram->attachFragmentShader(OpenglFragmentShader::CreateFromFile("glshaders/particle.frag"));
 		particlesDrawingProgram->compile();
 
 		particlesDrawingProgram_uMVPMatrix = particlesDrawingProgram->registerUniform("uMVP");
