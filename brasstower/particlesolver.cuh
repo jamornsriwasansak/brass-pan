@@ -291,14 +291,14 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext,
 	float3 positionNext = positionPrev;
 
 	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
-	int3 start = max(make_int3(0), centerGridPos - 1) - centerGridPos;
-	int3 end = min(gridSize - 1, centerGridPos + 1) - centerGridPos;
+	int3 start = centerGridPos - 1;
+	int3 end = centerGridPos + 1;
 
 	for (int z = start.z; z <= end.z; z++)
 		for (int y = start.y; y <= end.y; y++)
 			for (int x = start.x; x <= end.x; x++)
 			{
-				int3 gridPos = centerGridPos + make_int3(x, y, z);
+				int3 gridPos = make_int3(x, y, z);
 				int gridAddress = calcGridAddress(gridPos, gridSize);
 				int bucketStart = cellStart[gridAddress];
 				if (bucketStart == -1) { continue; }
