@@ -123,7 +123,7 @@ struct ParticleRenderer
 		glDepthFunc(GL_LEQUAL);
 
 		// load particle mesh
-		particleMesh = Mesh::Load("icosphere.objj")[0];
+		particleMesh = Mesh::Load("cube.objj")[0];
 		planeMesh = Mesh::Load("plane.objj")[0];
 
 		initParticleDrawingProgram();
@@ -133,6 +133,7 @@ struct ParticleRenderer
 	std::shared_ptr<OpenglProgram> particlesDrawingProgram;
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uMVPMatrix;
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uRadius;
+	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uCameraPosition;
 	GLuint particlesDrawingProgram_ssboBinding;
 	void initParticleDrawingProgram()
 	{
@@ -143,6 +144,7 @@ struct ParticleRenderer
 
 		particlesDrawingProgram_uMVPMatrix = particlesDrawingProgram->registerUniform("uMVP");
 		particlesDrawingProgram_uRadius = particlesDrawingProgram->registerUniform("uRadius");
+		particlesDrawingProgram_uCameraPosition = particlesDrawingProgram->registerUniform("uCameraPosition");
 		GLuint index = glGetProgramResourceIndex(particlesDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ParticlesInfo");
 		particlesDrawingProgram_ssboBinding = 0;
 		glShaderStorageBlockBinding(particlesDrawingProgram_ssboBinding, index, 0);
@@ -178,6 +180,7 @@ struct ParticleRenderer
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 			particlesDrawingProgram_uMVPMatrix->setMat4(cameraVpMatrix);
 			particlesDrawingProgram_uRadius->setFloat(scene->radius);
+			particlesDrawingProgram_uCameraPosition->setVec3(camera.pos);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, ssboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
 			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
