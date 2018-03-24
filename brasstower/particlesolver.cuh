@@ -15,6 +15,13 @@
 
 #define NUM_MAX_PARTICLE_PER_CELL 4
 
+template<typename T>
+static inline T * ToRaw(std::unique_ptr<thrust::device_vector<T>> & thrustVec)
+{
+	return thrust::raw_pointer_cast(thrustVec->data());
+}
+
+
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
 	*numThreads = 512;
@@ -71,21 +78,32 @@ void printPair(T * dev, int size)
 
 // PARTICLE SYSTEM //
 
-__global__ void initializeDevFloat(float * devArr, const int numParticles, const float value, const int offset)
+__global__ void initializeDevFloat(float * devArr,
+								   const int numParticles,
+								   const float value,
+								   const int offset)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 	devArr[i + offset] = value;
 }
 
-__global__ void initializeDevFloat3(float3 * devArr, const int numParticles, const float3 val, const int offset)
+__global__ void initializeDevFloat3(float3 * devArr,
+									const int numParticles,
+									const float3 val,
+									const int offset)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 	devArr[i + offset] = val;
 }
 
-__global__ void initializeBlockPosition(float3 * positions, const int numParticles, const int3 dimension, const float3 startPosition, const float3 step, const int offset)
+__global__ void initializeBlockPosition(float3 * positions,
+										const int numParticles,
+										const int3 dimension,
+										const float3 startPosition,
+										const float3 step,
+										const int offset)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -114,7 +132,13 @@ __device__ int calcGridAddress(int3 gridPos, int3 gridSize)
 	return (gridPos.z * gridSize.y * gridSize.x) + (gridPos.y * gridSize.x) + gridPos.x;
 }
 
-__global__ void updateGridId(int * gridIds, int * particleIds, float3 * positions, float3 cellOrigin, float3 cellSize, int3 gridSize, const int numParticles)
+__global__ void updateGridId(int * gridIds,
+							 int * particleIds,
+							 float3 * positions,
+							 float3 cellOrigin,
+							 float3 cellSize,
+							 int3 gridSize,
+							 const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -126,7 +150,9 @@ __global__ void updateGridId(int * gridIds, int * particleIds, float3 * position
 	particleIds[i] = i;
 }
 
-__global__ void findStartId(int * cellStart, int * sortedGridIds, const int numParticles)
+__global__ void findStartId(int * cellStart,
+							int * sortedGridIds,
+							const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -146,28 +172,44 @@ __global__ void findStartId(int * cellStart, int * sortedGridIds, const int numP
 
 // SOLVER //
 
-__global__ void applyForces(float3 * velocities, float * invMass, const int numParticles, const float deltaTime)
+__global__ void applyForces(float3 * velocities,
+							float * invMass,
+							const int numParticles,
+							const float deltaTime)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 	velocities[i] += make_float3(0.0f, -9.8f, 0.0f) * deltaTime;
 }
 
-__global__ void predictPositions(float3 * newPositions, float3 * positions, float3 * velocities, const int numParticles, const float deltaTime)
+__global__ void predictPositions(float3 * newPositions,
+								 float3 * positions,
+								 float3 * velocities,
+								 const int numParticles,
+								 const float deltaTime)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 	newPositions[i] = positions[i] + velocities[i] * deltaTime;
 }
 
-__global__ void updateVelocity(float3 * velocities, float3 * newPositions, float3 * positions, const int numParticles, const float invDeltaTime)
+__global__ void updateVelocity(float3 * velocities,
+							   float3 * newPositions,
+							   float3 * positions,
+							   const int numParticles,
+							   const float invDeltaTime)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 	velocities[i] = (newPositions[i] - positions[i]) * invDeltaTime;
 }
 
-__global__ void planeStabilize(float3 * positions, float3 * newPositions, const int numParticles, float3 planeOrigin, float3 planeNormal, const float radius)
+__global__ void planeStabilize(float3 * positions,
+							   float3 * newPositions,
+							   const int numParticles,
+							   float3 planeOrigin,
+							   float3 planeNormal,
+							   const float radius)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -179,8 +221,12 @@ __global__ void planeStabilize(float3 * positions, float3 * newPositions, const 
 	newPositions[i] += distance * planeNormal;
 }
 
-__global__ void particlePlaneCollisionConstraint(float3 * newPositions, float3 * positions, const int numParticles,
-												 float3 planeOrigin, float3 planeNormal, const float radius)
+__global__ void particlePlaneCollisionConstraint(float3 * newPositions,
+												 float3 * positions,
+												 const int numParticles,
+												 float3 planeOrigin,
+												 float3 planeNormal,
+												 const float radius)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -193,7 +239,13 @@ __global__ void particlePlaneCollisionConstraint(float3 * newPositions, float3 *
 	positions[i] += (2.0f * diffPosition + distance) * planeNormal / 10.0f;
 }
 
-__global__ void checkIncorrectGridId(int* cellIds, int* particleIds, float3 * positions, float3 cellOrigin, float3 cellSize, int3 gridSize, const int numParticles)
+__global__ void checkIncorrectGridId(int* cellIds,
+									 int* particleIds,
+									 float3 * positions,
+									 float3 cellOrigin,
+									 float3 cellSize,
+									 int3 gridSize,
+									 const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -221,10 +273,16 @@ __global__ void checkEqual(int* a, int * b, const int numParticles)
 	}
 }
 
-__global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, float3 * newPositionsPrev,
-													int* sortedCellId, int* sortedParticleId, int* cellStart, // hash grid
-													float3 cellOrigin, float3 cellSize, int3 gridSize,
-													const int numParticles, const float radius)
+__global__ void particleParticleCollisionConstraint(float3 * newPositionsNext,
+													float3 * newPositionsPrev,
+													int* sortedCellId,
+													int* sortedParticleId,
+													int* cellStart, 
+													float3 cellOrigin,
+													float3 cellSize,
+													int3 gridSize,
+													const int numParticles,
+													const float radius)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -268,24 +326,8 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 	newPositionsNext[i] = positionNext;
 }
 
-__global__ void particleParticleCollisionConstraintBrute(float3 * newPositionsNext, float3 * newPositionsPrev, 
-													const int numParticles, const float radius)
-{
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
-	if (i >= numParticles) { return; }
-	newPositionsNext[i] = newPositionsPrev[i];
-
-
-}
-
 struct ParticleSolver
 {
-	template<typename T>
-	static inline T * ToRaw(std::unique_ptr<thrust::device_vector<T>> & thrustVec)
-	{
-		return thrust::raw_pointer_cast(thrustVec->data());
-	}
-
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
 		scene(scene),
 		cellOrigin(make_float3(-5, -1, -5)),
@@ -303,11 +345,6 @@ struct ParticleSolver
 		devCellStart = (std::make_unique<thrust::device_vector<int>>(gridSize.x * gridSize.y * gridSize.z));
 	}
 
-	float3 * getDevPositionsRawPointer()
-	{
-		return thrust::raw_pointer_cast(devPositions->data());
-	}
-
 	void addParticles(const glm::ivec3 & dimension, const glm::vec3 & startPosition, const glm::vec3 & step, const float mass)
 	{
 		int numParticles = dimension.x * dimension.y * dimension.z;
@@ -322,8 +359,16 @@ struct ParticleSolver
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
-		initializeDevFloat<<<numBlocks, numThreads>>>(thrust::raw_pointer_cast(devInvMasses->data()), numParticles, 1.0f / mass, scene->numParticles);
-		initializeBlockPosition<<<numBlocks, numThreads>>>(thrust::raw_pointer_cast(devPositions->data()), numParticles, make_int3(dimension), make_float3(startPosition), make_float3(step), scene->numParticles);
+		initializeDevFloat<<<numBlocks, numThreads>>>(ToRaw(devInvMasses),
+													  numParticles,
+													  1.0f / mass,
+													  scene->numParticles);
+		initializeBlockPosition<<<numBlocks, numThreads>>>(ToRaw(devPositions),
+														   numParticles,
+														   make_int3(dimension),
+														   make_float3(startPosition),
+														   make_float3(step),
+														   scene->numParticles);
 		scene->numParticles += numParticles;
 	}
 
