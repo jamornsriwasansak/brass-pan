@@ -103,9 +103,14 @@ __device__ int3 calcGridPos(float3 position, float3 origin, float3 cellSize)
 	return make_int3((position - origin) / cellSize);
 }
 
+__device__ int positiveMod(int dividend, int divisor)
+{
+	return (dividend % divisor + divisor) % divisor;
+}
+
 __device__ int calcGridAddress(int3 gridPos, int3 gridSize)
 {
-	gridPos = max(make_int3(0), min(gridPos, gridSize - 1)); // clamp
+	gridPos = make_int3(positiveMod(gridPos.x, gridSize.x), positiveMod(gridPos.y, gridSize.y), positiveMod(gridPos.z, gridSize.z));
 	return (gridPos.z * gridSize.y * gridSize.x) + (gridPos.y * gridSize.x) + gridPos.x;
 }
 
@@ -240,7 +245,7 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext, f
 				int bucketStart = cellStart[gridAddress];
 				if (bucketStart == -1) { continue; }
 
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL; k++)
+				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
 				{
 					int gridAddress2 = sortedCellId[bucketStart + k];
 					int particleId2 = sortedParticleId[bucketStart + k];
