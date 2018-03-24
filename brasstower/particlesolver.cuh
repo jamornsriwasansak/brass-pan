@@ -4,23 +4,15 @@
 #include <cuda_gl_interop.h>
 #include <conio.h>
 
-#include <thrust/sort.h>
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-#include <thrust/fill.h>
+#ifndef __INTELLISENSE__
+#include <cub/cub.cuh>
+#endif
 
 #include "cuda/helper.cuh"
 #include "cuda/cudaglm.cuh"
 #include "scene.h"
 
 #define NUM_MAX_PARTICLE_PER_CELL 4
-
-template<typename T>
-static inline T * ToRaw(std::unique_ptr<thrust::device_vector<T>> & thrustVec)
-{
-	return thrust::raw_pointer_cast(thrustVec->data());
-}
-
 
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
@@ -330,19 +322,33 @@ struct ParticleSolver
 {
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
 		scene(scene),
-		cellOrigin(make_float3(-5, -1, -5)),
+		cellOrigin(make_float3(-4, -1, -5)),
 		cellSize(make_float3(scene->radius * 2.0f)),
 		gridSize(make_int3(128))
 	{
-		devPositions = (std::make_unique<thrust::device_vector<float3>>(scene->numMaxParticles, make_float3(0, 1, 0)));
-		devNewPositions = (std::make_unique<thrust::device_vector<float3>>(scene->numMaxParticles));
-		devTempNewPositions = (std::make_unique<thrust::device_vector<float3>>(scene->numMaxParticles));
-		devVelocities = (std::make_unique<thrust::device_vector<float3>>(scene->numMaxParticles, make_float3(0, 0, 0)));
-		devInvMasses = (std::make_unique<thrust::device_vector<float>>(scene->numMaxParticles));
+		checkCudaErrors(cudaMalloc(&devPositions, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devTempNewPositions, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
 
-		devCellId = (std::make_unique<thrust::device_vector<int>>(scene->numMaxParticles));
-		devParticleId = (std::make_unique<thrust::device_vector<int>>(scene->numMaxParticles));
-		devCellStart = (std::make_unique<thrust::device_vector<int>>(gridSize.x * gridSize.y * gridSize.z));
+		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devParticleId, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devSortedCellId, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devSortedParticleId, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devCellStart, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
+
+		checkCudaErrors(cudaMemset(devVelocities, 0, scene->numMaxParticles * sizeof(float3)));
+	}
+
+	void updateTempStorageSize(const size_t size)
+	{
+		if (size > devTempStorageSize)
+		{
+			if (devTempStorage != nullptr) { checkCudaErrors(cudaFree(devTempStorage)); }
+			checkCudaErrors(cudaMalloc(&devTempStorage, size));
+			devTempStorageSize = size;
+		}
 	}
 
 	void addParticles(const glm::ivec3 & dimension, const glm::vec3 & startPosition, const glm::vec3 & step, const float mass)
@@ -359,17 +365,63 @@ struct ParticleSolver
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
-		initializeDevFloat<<<numBlocks, numThreads>>>(ToRaw(devInvMasses),
+		initializeDevFloat<<<numBlocks, numThreads>>>(devInvMasses,
 													  numParticles,
 													  1.0f / mass,
 													  scene->numParticles);
-		initializeBlockPosition<<<numBlocks, numThreads>>>(ToRaw(devPositions),
+		initializeBlockPosition<<<numBlocks, numThreads>>>(devPositions,
 														   numParticles,
 														   make_int3(dimension),
 														   make_float3(startPosition),
 														   make_float3(step),
 														   scene->numParticles);
 		scene->numParticles += numParticles;
+	}
+
+	void updateGrid(int numBlocks, int numThreads)
+	{
+		checkCudaErrors(cudaMemset(devCellStart, 0, scene->numMaxParticles * sizeof(int)));
+
+		updateGridId<<<numBlocks, numThreads>>>(devCellId,
+												devParticleId,
+												devNewPositions,
+												cellOrigin,
+												cellSize,
+												gridSize,
+												scene->numParticles);
+
+	#if 0 // for debugging
+		printf("before sort\n");
+		checkIncorrectGridId<<<numBlocks, numThreads>>>(devCellId, devParticleId, devNewPositions, cellOrigin, cellSize, gridSize, scene->numParticles);
+		checkCudaLastErrors();
+		cudaDeviceSynchronize();
+	#endif
+
+		size_t tempStorageSize = 0;
+		cub::DeviceRadixSort::SortPairs(devTempStorage,
+										tempStorageSize,
+										devCellId,
+										devSortedCellId,
+										devParticleId,
+										devSortedParticleId,
+										scene->numParticles);
+		updateTempStorageSize(tempStorageSize);
+		cub::DeviceRadixSort::SortPairs(devTempStorage,
+										devTempStorageSize,
+										devCellId,
+										devSortedCellId,
+										devParticleId,
+										devSortedParticleId,
+										scene->numParticles);
+
+	#if 0 // for debugging
+		printf("after sort\n");
+		checkIncorrectGridId << <numBlocks, numThreads >> >(devCellId, devParticleId, devNewPositions, cellOrigin, cellSize, gridSize, scene->numParticles);
+		checkCudaLastErrors();
+		cudaDeviceSynchronize();
+	#endif
+
+		findStartId<<<numBlocks, numThreads>>>(devCellStart, devSortedCellId, scene->numParticles);
 	}
 
 	void update(const int numSubTimeStep, const float deltaTime)
@@ -380,13 +432,13 @@ struct ParticleSolver
 
 		for (int i = 0;i < numSubTimeStep;i++)
 		{ 
-			applyForces<<<numBlocks, numThreads>>>(ToRaw(devVelocities),
-												   ToRaw(devInvMasses),
+			applyForces<<<numBlocks, numThreads>>>(devVelocities,
+												   devInvMasses,
 												   scene->numParticles,
 												   subDeltaTime);
-			predictPositions<<<numBlocks, numThreads>>>(ToRaw(devNewPositions),
-														ToRaw(devPositions),
-														ToRaw(devVelocities),
+			predictPositions<<<numBlocks, numThreads>>>(devNewPositions,
+														devPositions,
+														devVelocities,
 														scene->numParticles,
 														subDeltaTime);
 
@@ -395,8 +447,8 @@ struct ParticleSolver
 			{
 				for (const Plane & plane : scene->planes)
 				{
-					planeStabilize<<<numBlocks, numThreads>>>(ToRaw(devPositions),
-															  ToRaw(devNewPositions),
+					planeStabilize<<<numBlocks, numThreads>>>(devPositions,
+															  devNewPositions,
 															  scene->numParticles,
 															  make_float3(plane.origin),
 															  make_float3(plane.normal),
@@ -406,45 +458,18 @@ struct ParticleSolver
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
-			for (int i = 0; i < 1; i++)
+			for (int i = 0; i < 2; i++)
 			{
 				// compute grid
-				{
-					thrust::fill(devCellStart->begin(), devCellStart->begin() + scene->numParticles, -1);
-					updateGridId<<<numBlocks, numThreads>>>(ToRaw(devCellId),
-															ToRaw(devParticleId),
-															ToRaw(devNewPositions),
-															cellOrigin,
-															cellSize,
-															gridSize,
-															scene->numParticles);
+				updateGrid(numBlocks, numThreads);
 
-				#if DEBUG
-					printf("before sort\n");
-					checkIncorrectGridId<<<numBlocks, numThreads>>>(ToRaw(devCellId), ToRaw(devParticleId), ToRaw(devNewPositions), cellOrigin, cellSize, gridSize, scene->numParticles);
-					checkCudaLastErrors();
-					cudaDeviceSynchronize();
-				#endif
-
-					thrust::sort_by_key(devCellId->begin(), devCellId->begin() + scene->numParticles, devParticleId->begin());
-
-				#if DEBUG
-					printf("after sort\n");
-					checkIncorrectGridId<<<numBlocks, numThreads>>>(ToRaw(devCellId), ToRaw(devParticleId), ToRaw(devNewPositions), cellOrigin, cellSize, gridSize, scene->numParticles);
-					checkCudaLastErrors();
-					cudaDeviceSynchronize();
-				#endif
-
-					findStartId<<<numBlocks, numThreads>>>(ToRaw(devCellStart), ToRaw(devCellId), scene->numParticles);
-				}
-
-				for (int j = 0; j < 10; j++)
+				for (int j = 0; j < 5; j++)
 				{
 					// solving all plane collisions
 					for (const Plane & plane : scene->planes)
 					{
-						particlePlaneCollisionConstraint<<<numBlocks, numThreads>>>(ToRaw(devNewPositions),
-																					ToRaw(devPositions),
+						particlePlaneCollisionConstraint<<<numBlocks, numThreads>>>(devNewPositions,
+																					devPositions,
 																					scene->numParticles,
 																					make_float3(plane.origin),
 																					make_float3(plane.normal),
@@ -452,11 +477,11 @@ struct ParticleSolver
 					}
 
 					// solving all particles collisions
-					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(ToRaw(devTempNewPositions),
-																				   ToRaw(devNewPositions),
-																				   ToRaw(devCellId),
-																				   ToRaw(devParticleId),
-																				   ToRaw(devCellStart),
+					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devTempNewPositions,
+																				   devNewPositions,
+																				   devSortedCellId,
+																				   devSortedParticleId,
+																				   devCellStart,
 																				   cellOrigin,
 																				   cellSize,
 																				   gridSize,
@@ -466,25 +491,33 @@ struct ParticleSolver
 				}
 			}
 
-			updateVelocity<<<numBlocks, numThreads>>>(ToRaw(devVelocities),
-													   ToRaw(devNewPositions),
-													   ToRaw(devPositions),
-													   scene->numParticles,
+			updateVelocity<<<numBlocks, numThreads>>>(devVelocities,
+													  devNewPositions,
+													  devPositions,
+													  scene->numParticles,
 													   1.0f / subDeltaTime);
 			std::swap(devNewPositions, devPositions); // update position
 
 		}
 	}
 
-	std::unique_ptr<thrust::device_vector<float3>> devPositions;
-	std::unique_ptr<thrust::device_vector<float3>> devNewPositions;
-	std::unique_ptr<thrust::device_vector<float3>> devTempNewPositions;
-	std::unique_ptr<thrust::device_vector<float3>> devVelocities;
-	std::unique_ptr<thrust::device_vector<float>> devInvMasses;
+	/// TODO:: implement object's destroyer
 
-	std::unique_ptr<thrust::device_vector<int>> devCellId;
-	std::unique_ptr<thrust::device_vector<int>> devParticleId;
-	std::unique_ptr<thrust::device_vector<int>> devCellStart;
+	float3 * devPositions;
+	float3 * devNewPositions;
+	float3 * devTempNewPositions;
+	float3 * devVelocities;
+	float  * devInvMasses;
+
+	int * devCellId;
+	int * devParticleId;
+	int * devCellStart;
+
+	int * devSortedCellId;
+	int * devSortedParticleId;
+
+	void * devTempStorage = nullptr;
+	size_t devTempStorageSize = 0;
 
 	const float3 cellOrigin;
 	const float3 cellSize;
