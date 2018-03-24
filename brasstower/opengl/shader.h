@@ -176,6 +176,8 @@ public:
 
 using OpenglVertexShader = OpenglShader<GL_VERTEX_SHADER>;
 using OpenglGeometryShader = OpenglShader<GL_GEOMETRY_SHADER>;
+using OpenglTessEvalShader = OpenglShader<GL_TESS_EVALUATION_SHADER>;
+using OpenglTessControlShader = OpenglShader<GL_TESS_CONTROL_SHADER>;
 //using OpenglComputeShader = OpenglShader<GL_COMPUTE_SHADER>;
 using OpenglFragmentShader = OpenglShader<GL_FRAGMENT_SHADER>;
 
@@ -207,6 +209,17 @@ public:
 		assert(shader != nullptr);
 		mGeometryShader = shader;
 		glAttachShader(mHandle, shader->mHandle);
+	}
+
+	void attachTessShaders(std::shared_ptr<OpenglTessControlShader> controlShader, std::shared_ptr<OpenglTessEvalShader> evalShader)
+	{
+		assert(controlShader != nullptr);
+		assert(evalShader != nullptr);
+
+		mTessControlShader = controlShader;
+		glAttachShader(mHandle, controlShader->mHandle);
+		mTessEvalShader = evalShader;
+		glAttachShader(mHandle, evalShader->mHandle);
 	}
 
 	void compile()
@@ -270,6 +283,8 @@ public:
 	std::shared_ptr<OpenglVertexShader> mVertexShader = nullptr;
 	std::shared_ptr<OpenglFragmentShader> mFragmentShader = nullptr;
 	std::shared_ptr<OpenglGeometryShader> mGeometryShader = nullptr;
+	std::shared_ptr<OpenglTessEvalShader> mTessEvalShader = nullptr;
+	std::shared_ptr<OpenglTessControlShader> mTessControlShader = nullptr;
 
 	std::vector<OpenglUniform> mUniforms;
 
