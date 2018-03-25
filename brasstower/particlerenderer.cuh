@@ -145,9 +145,9 @@ struct ParticleRenderer
 		particlesDrawingProgram_uMVPMatrix = particlesDrawingProgram->registerUniform("uMVP");
 		particlesDrawingProgram_uRadius = particlesDrawingProgram->registerUniform("uRadius");
 		particlesDrawingProgram_uCameraPosition = particlesDrawingProgram->registerUniform("uCameraPosition");
-		GLuint index = glGetProgramResourceIndex(particlesDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ParticlesInfo");
+		GLuint index = glGetProgramResourceIndex(particlesDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ParticlePositions");
 		particlesDrawingProgram_ssboBinding = 0;
-		glShaderStorageBlockBinding(particlesDrawingProgram_ssboBinding, index, 0);
+		glShaderStorageBlockBinding(particlesDrawingProgram->mHandle, index, particlesDrawingProgram_ssboBinding);
 	}
 
 	std::shared_ptr<OpenglProgram> planeDrawingProgram;
