@@ -105,6 +105,7 @@ static GLFWwindow* InitGL(const size_t width, const size_t height)
 struct ParticleRenderer
 {
 	ParticleRenderer(const glm::uvec2 & resolution, const std::shared_ptr<Scene> & scene):
+		resolution(resolution),
 		camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)resolution.x / (float)resolution.y),
 		scene(scene)
 	{
@@ -128,6 +129,8 @@ struct ParticleRenderer
 
 		initParticleDrawingProgram();
 		initInfinitePlaneDrawingProgram();
+		initParticleColorCodeFramebuffer();
+		initParticleColorCodeProgram();
 	}
 
 	std::shared_ptr<OpenglProgram> particlesDrawingProgram;
@@ -164,6 +167,78 @@ struct ParticleRenderer
 		planeDrawingProgram_uVPMatrix = planeDrawingProgram->registerUniform("uVPMatrix");
 		planeDrawingProgram_uModelMatrix = planeDrawingProgram->registerUniform("uModelMatrix");
 		planeDrawingProgram_uCameraPosition = planeDrawingProgram->registerUniform("uCameraPos");
+	}
+
+	GLuint particlesColorCodeFramebufferHandle;
+	GLuint particlesColorCodeTextureHandle;
+	void initParticleColorCodeFramebuffer()
+	{
+		glGenFramebuffers(1, &particlesColorCodeFramebufferHandle);
+		glBindFramebuffer(GL_FRAMEBUFFER, particlesColorCodeFramebufferHandle);
+
+		glGenTextures(1, &particlesColorCodeTextureHandle);
+		glBindTexture(GL_TEXTURE_2D, particlesColorCodeTextureHandle);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, resolution.x, resolution.y, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, particlesColorCodeTextureHandle, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
+	}
+
+	// for picking a particle
+	std::shared_ptr<OpenglProgram> particlesColorCodeProgram;
+	std::shared_ptr<OpenglUniform> particlesColorCodeProgram_uMVPMatrix;
+	std::shared_ptr<OpenglUniform> particlesColorCodeProgram_uRadius;
+	std::shared_ptr<OpenglUniform> particlesColorCodeProgram_uCameraPosition;
+	GLuint particlesColorCodeProgram_ssboBinding;
+	void initParticleColorCodeProgram()
+	{
+		particlesColorCodeProgram = std::make_shared<OpenglProgram>();
+		particlesColorCodeProgram->attachVertexShader(OpenglVertexShader::CreateFromFile("glshaders/particlecolorcode.vert"));
+		particlesColorCodeProgram->attachFragmentShader(OpenglFragmentShader::CreateFromFile("glshaders/particlecolorcode.frag"));
+		particlesColorCodeProgram->compile();
+
+		particlesColorCodeProgram_uMVPMatrix = particlesColorCodeProgram->registerUniform("uMVP");
+		particlesColorCodeProgram_uRadius = particlesColorCodeProgram->registerUniform("uRadius");
+		particlesColorCodeProgram_uCameraPosition = particlesColorCodeProgram->registerUniform("uCameraPosition");
+		GLuint index = glGetProgramResourceIndex(particlesDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ParticlePositions");
+		particlesDrawingProgram_ssboBinding = 0;
+		glShaderStorageBlockBinding(particlesDrawingProgram->mHandle, index, particlesDrawingProgram_ssboBinding);
+	}
+
+	int queryParticleColorCode(const glm::uvec2 & pos)
+	{
+		glm::mat4 cameraVpMatrix = camera.vpMatrix();
+		glBindFramebuffer(GL_FRAMEBUFFER, particlesColorCodeFramebufferHandle);
+		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
+		// set to max
+		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+
+		// draw all particles
+		{
+			glUseProgram(particlesColorCodeProgram->mHandle);
+			glEnableVertexAttribArray(0);
+			glBindBuffer(GL_ARRAY_BUFFER, particleMesh->mGl.mVerticesBuffer->mHandle);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+			particlesColorCodeProgram_uMVPMatrix->setMat4(cameraVpMatrix);
+			particlesColorCodeProgram_uRadius->setFloat(scene->radius);
+			particlesColorCodeProgram_uCameraPosition->setVec3(camera.pos);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, ssboBuffer);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
+			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
+			glDisableVertexAttribArray(0);
+		}
+
+		GLubyte pixels[3];
+		glReadPixels(pos.x, resolution.y - pos.y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+		int particleId = (pixels[0] * 256 * 256) + (pixels[1] * 256) + pixels[2];
+		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
+		// reset to old color
+		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+		return particleId;
 	}
 
 	void update()
@@ -223,6 +298,7 @@ struct ParticleRenderer
 	std::shared_ptr<Mesh> planeMesh;
 
 	const std::shared_ptr<Scene> scene;
+	const glm::uvec2 resolution;
 	Camera camera;
 	GLuint ssboBuffer;
 	cudaGraphicsResource_t ssboGraphicsRes;

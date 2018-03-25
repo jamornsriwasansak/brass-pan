@@ -39,7 +39,11 @@ void updateControl()
 		glm::dvec2 mousePos;
 		glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
 
-		//if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+		{
+			glm::uvec2 uMousePos(mousePos);
+			renderer->queryParticleColorCode(uMousePos);
+		}
 
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
 			rotation += (mousePos - prevMousePos);
