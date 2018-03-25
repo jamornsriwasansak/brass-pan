@@ -13,6 +13,7 @@
 #include "scene.h"
 
 #define NUM_MAX_PARTICLE_PER_CELL 4
+#define ENERGY_LOST_RATIO 0.1f;
 
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
@@ -70,49 +71,62 @@ void printPair(T * dev, int size)
 
 // PARTICLE SYSTEM //
 
-__global__ void setDevInt(int * devArr,
-						  const int numParticles,
+__global__ void increment(int * x)
+{
+	atomicAdd(x, 1);
+}
+
+__global__ void setDevArr_devIntPtr(int * devArr,
+								    const int * value,
+								    const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+	devArr[i] = *value;
+}
+
+__global__ void setDevArr_int(int * devArr,
 						  const int value,
-						  const int offset)
+						  const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
-	devArr[i + offset] = value;
+	devArr[i] = value;
 }
 
-__global__ void setDevFloat(float * devArr,
-							const int numParticles,
-							const float value,
-							const int offset)
+__global__ void setDevArr_float(float * devArr,
+								const float value,
+								const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
-	devArr[i + offset] = value;
+	devArr[i] = value;
 }
 
-__global__ void setDevFloat3(float3 * devArr,
-							 const int numParticles,
-							 const float3 val,
-							 const int offset)
+__global__ void setDevArr_float3(float3 * devArr,
+								 const float3 val,
+								 const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
-	devArr[i + offset] = val;
+	devArr[i] = val;
 }
 
 __global__ void initPositionBox(float3 * positions,
-								const int numParticles,
+								int * phases,
+								int * phaseCounter,
 								const int3 dimension,
 								const float3 startPosition,
 								const float3 step,
-								const int offset)
+								const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 	int x = i % dimension.x;
 	int y = (i / dimension.x) % dimension.y;
 	int z = i / (dimension.x * dimension.y);
-	positions[i + offset] = make_float3(x, y, z) * step + startPosition;
+	positions[i] = make_float3(x, y, z) * step + startPosition;
+	phases[i] = atomicAdd(phaseCounter, 1);
 }
 
 // GRID //
@@ -138,10 +152,10 @@ __device__ int calcGridAddress(int3 gridPos, int3 gridSize)
 
 __global__ void updateGridId(int * gridIds,
 							 int * particleIds,
-							 float3 * positions,
-							 float3 cellOrigin,
-							 float3 cellSize,
-							 int3 gridSize,
+							 const float3 * positions,
+							 const float3 cellOrigin,
+							 const float3 cellSize,
+							 const int3 gridSize,
 							 const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -155,7 +169,7 @@ __global__ void updateGridId(int * gridIds,
 }
 
 __global__ void findStartId(int * cellStart,
-							int * sortedGridIds,
+							const int * sortedGridIds,
 							const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -177,7 +191,7 @@ __global__ void findStartId(int * cellStart,
 // SOLVER //
 
 __global__ void applyForces(float3 * velocities,
-							float * invMass,
+							const float * invMass,
 							const int numParticles,
 							const float deltaTime)
 {
@@ -187,8 +201,8 @@ __global__ void applyForces(float3 * velocities,
 }
 
 __global__ void predictPositions(float3 * newPositions,
-								 float3 * positions,
-								 float3 * velocities,
+								 const float3 * positions,
+								 const float3 * velocities,
 								 const int numParticles,
 								 const float deltaTime)
 {
@@ -198,8 +212,8 @@ __global__ void predictPositions(float3 * newPositions,
 }
 
 __global__ void updateVelocity(float3 * velocities,
-							   float3 * newPositions,
-							   float3 * positions,
+							   const float3 * newPositions,
+							   const float3 * positions,
 							   const int numParticles,
 							   const float invDeltaTime)
 {
@@ -211,8 +225,8 @@ __global__ void updateVelocity(float3 * velocities,
 __global__ void planeStabilize(float3 * positions,
 							   float3 * newPositions,
 							   const int numParticles,
-							   float3 planeOrigin,
-							   float3 planeNormal,
+							   const float3 planeOrigin,
+							   const float3 planeNormal,
 							   const float radius)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -230,8 +244,8 @@ __global__ void planeStabilize(float3 * positions,
 __global__ void particlePlaneCollisionConstraint(float3 * newPositions,
 												 float3 * positions,
 												 const int numParticles,
-												 float3 planeOrigin,
-												 float3 planeNormal,
+												 const float3 planeOrigin,
+												 const float3 planeNormal,
 												 const float radius)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -242,17 +256,18 @@ __global__ void particlePlaneCollisionConstraint(float3 * newPositions,
 
 	float diffPosition = dot(newPositions[i] - positions[i], planeNormal);
 	newPositions[i] += distance * planeNormal;
-	positions[i] += (2.0f * diffPosition + distance) * planeNormal / 10.0f;
+	positions[i] += (2.0f * diffPosition + distance) * planeNormal * ENERGY_LOST_RATIO;
 }
 
 __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext,
-													float3 * newPositionsPrev,
-													int* sortedCellId,
-													int* sortedParticleId,
-													int* cellStart, 
-													float3 cellOrigin,
-													float3 cellSize,
-													int3 gridSize,
+													const float3 * newPositionsPrev,
+													const int* phases,
+													const int* sortedCellId,
+													const int* sortedParticleId,
+													const int* cellStart, 
+													const float3 cellOrigin,
+													const float3 cellSize,
+													const int3 gridSize,
 													const int numParticles,
 													const float radius)
 {
@@ -281,7 +296,7 @@ __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext,
 					int particleId2 = sortedParticleId[bucketStart + k];
 					if (gridAddress2 != gridAddress) { break; }
 
-					if (i != particleId2)
+					if (i != particleId2 && phases[i] != phases[particleId2])
 					{
 						float3 position2 = newPositionsPrev[particleId2];
 						float3 diff = positionPrev - position2;
@@ -312,6 +327,9 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devPhaseCounter, sizeof(int)));
+
+		checkCudaErrors(cudaMemset(devPhaseCounter, 0, sizeof(int)));
 
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devParticleId, scene->numMaxParticles * sizeof(int)));
@@ -346,16 +364,16 @@ struct ParticleSolver
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
-		setDevFloat<<<numBlocks, numThreads>>>(devInvMasses,
-													  numParticles,
-													  1.0f / mass,
-													  scene->numParticles);
-		initPositionBox<<<numBlocks, numThreads>>>(devPositions,
-														   numParticles,
-														   make_int3(dimension),
-														   make_float3(startPosition),
-														   make_float3(step),
-														   scene->numParticles);
+		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
+												   1.0f / mass,
+												   numParticles);
+		initPositionBox<<<numBlocks, numThreads>>>(devPositions + scene->numParticles,
+												   devPhases,
+												   devPhaseCounter,
+												   make_int3(dimension),
+												   make_float3(startPosition),
+												   make_float3(step),
+												   numParticles);
 		scene->numParticles += numParticles;
 	}
 
@@ -372,13 +390,19 @@ struct ParticleSolver
 								   &(initialPositions[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
+		int numBlocks, numThreads;
+		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
+
+		increment<<<1, 1>>>(devPhaseCounter);
+		setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles, devPhaseCounter, numParticles);
+		cudaDeviceSynchronize();
+		
 		scene->numParticles += numParticles;
 	}
 
 	void updateGrid(int numBlocks, int numThreads)
 	{
-		checkCudaErrors(cudaMemset(devCellStart, 0, scene->numMaxParticles * sizeof(int)));
-
+		setDevArr_int<<<numBlocks, numThreads>>>(devCellStart, -1, scene->numMaxParticles);
 		updateGridId<<<numBlocks, numThreads>>>(devCellId,
 												devParticleId,
 												devNewPositions,
@@ -462,6 +486,7 @@ struct ParticleSolver
 					// solving all particles collisions
 					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devTempNewPositions,
 																				   devNewPositions,
+																				   devPhases,
 																				   devSortedCellId,
 																				   devSortedParticleId,
 																				   devCellStart,
@@ -480,7 +505,6 @@ struct ParticleSolver
 													  scene->numParticles,
 													   1.0f / subDeltaTime);
 			std::swap(devNewPositions, devPositions); // update position
-
 		}
 	}
 
@@ -492,6 +516,7 @@ struct ParticleSolver
 	float3 * devVelocities;
 	float  * devInvMasses;
 	int    * devPhases;
+	int    * devPhaseCounter;
 
 	int * devCellId;
 	int * devParticleId;
@@ -502,6 +527,8 @@ struct ParticleSolver
 
 	void * devTempStorage = nullptr;
 	size_t devTempStorageSize = 0;
+
+	bool isParticleAdded = false;
 
 	const float3 cellOrigin;
 	const float3 cellSize;
