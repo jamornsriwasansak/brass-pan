@@ -213,6 +213,8 @@ __global__ void planeStabilize(float3 * positions,
 	newPositions[i] += distance * planeNormal;
 }
 
+// PROJECT CONSTRAINTS //
+
 __global__ void particlePlaneCollisionConstraint(float3 * newPositions,
 												 float3 * positions,
 												 const int numParticles,
@@ -229,40 +231,6 @@ __global__ void particlePlaneCollisionConstraint(float3 * newPositions,
 	float diffPosition = dot(newPositions[i] - positions[i], planeNormal);
 	newPositions[i] += distance * planeNormal;
 	positions[i] += (2.0f * diffPosition + distance) * planeNormal / 10.0f;
-}
-
-__global__ void checkIncorrectGridId(int* cellIds,
-									 int* particleIds,
-									 float3 * positions,
-									 float3 cellOrigin,
-									 float3 cellSize,
-									 int3 gridSize,
-									 const int numParticles)
-{
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
-	if (i >= numParticles) { return; }
-
-	int cellId = cellIds[i];
-	int particleId = particleIds[i];
-
-	float3 position = positions[particleId];
-	int3 gridPos = calcGridPos(position, cellOrigin, cellSize);
-	int gridAddress = calcGridAddress(gridPos, gridSize);
-
-	if (gridAddress != cellId)
-	{
-		printf("checkIncorrectGridId: error at %d (%d vs %d)\n", i, cellId, gridAddress);
-	}
-}
-
-__global__ void checkEqual(int* a, int * b, const int numParticles)
-{
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
-	if (i >= numParticles) { return; }
-	if (a[i] != b[i])
-	{
-		printf("checkEqual: error at %d (%d vs %d)\n", i, a[i], b[i]);
-	}
 }
 
 __global__ void particleParticleCollisionConstraint(float3 * newPositionsNext,
@@ -331,6 +299,7 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devTempNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
+		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
 
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devParticleId, scene->numMaxParticles * sizeof(int)));
@@ -389,15 +358,8 @@ struct ParticleSolver
 												cellSize,
 												gridSize,
 												scene->numParticles);
-
-	#if 0 // for debugging
-		printf("before sort\n");
-		checkIncorrectGridId<<<numBlocks, numThreads>>>(devCellId, devParticleId, devNewPositions, cellOrigin, cellSize, gridSize, scene->numParticles);
-		checkCudaLastErrors();
-		cudaDeviceSynchronize();
-	#endif
-
 		size_t tempStorageSize = 0;
+		// get temp storage size (not sorting yet)
 		cub::DeviceRadixSort::SortPairs(devTempStorage,
 										tempStorageSize,
 										devCellId,
@@ -406,6 +368,7 @@ struct ParticleSolver
 										devSortedParticleId,
 										scene->numParticles);
 		updateTempStorageSize(tempStorageSize);
+		// sort!
 		cub::DeviceRadixSort::SortPairs(devTempStorage,
 										devTempStorageSize,
 										devCellId,
@@ -413,14 +376,6 @@ struct ParticleSolver
 										devParticleId,
 										devSortedParticleId,
 										scene->numParticles);
-
-	#if 0 // for debugging
-		printf("after sort\n");
-		checkIncorrectGridId << <numBlocks, numThreads >> >(devCellId, devParticleId, devNewPositions, cellOrigin, cellSize, gridSize, scene->numParticles);
-		checkCudaLastErrors();
-		cudaDeviceSynchronize();
-	#endif
-
 		findStartId<<<numBlocks, numThreads>>>(devCellStart, devSortedCellId, scene->numParticles);
 	}
 
