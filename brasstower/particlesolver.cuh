@@ -364,40 +364,59 @@ struct ParticleSolver
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
-		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
-												   1.0f / mass,
-												   numParticles);
+		// set positions
 		initPositionBox<<<numBlocks, numThreads>>>(devPositions + scene->numParticles,
-												   devPhases,
+												   devPhases + scene->numParticles,
 												   devPhaseCounter,
 												   make_int3(dimension),
 												   make_float3(startPosition),
 												   make_float3(step),
 												   numParticles);
+		// set inv masses
+		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
+												   1.0f / mass,
+												   numParticles);
 		scene->numParticles += numParticles;
+		isNotRigidParticlesAdded = true;
 	}
 
 	void addRigidBody(const std::vector<glm::vec3> initialPositions, const float massPerParticle)
 	{
 		int numParticles = initialPositions.size();
+		if (isNotRigidParticlesAdded)
+		{
+			std::string message = std::string(__FILE__) + std::string("can't rigid particles after different particles type");
+			throw std::exception(message.c_str());
+		}
 
 		if (scene->numParticles + numParticles > scene->numMaxParticles)
 		{
-			std::string message = std::string(__FILE__) + std::string(" num particles exceed num max particles");
+			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
 			throw std::exception(message.c_str());
 		}
+
+		// set positions
 		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
 								   &(initialPositions[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
+
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
+		// set inv masses
+		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
+												   1.0f / massPerParticle,
+												   numParticles);
+		// set phases
+		setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+													   devPhaseCounter,
+													   numParticles);
+		// increment phase counter
 		increment<<<1, 1>>>(devPhaseCounter);
-		setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles, devPhaseCounter, numParticles);
-		cudaDeviceSynchronize();
 		
 		scene->numParticles += numParticles;
+		rigidBodySize = scene->numParticles;
 	}
 
 	void updateGrid(int numBlocks, int numThreads)
@@ -429,6 +448,12 @@ struct ParticleSolver
 										devSortedParticleId,
 										scene->numParticles);
 		findStartId<<<numBlocks, numThreads>>>(devCellStart, devSortedCellId, scene->numParticles);
+	}
+
+	void updateRigidBodyShapeMatch()
+	{
+		// compute center of mass
+		
 	}
 
 	void update(const int numSubTimeStep, const float deltaTime)
@@ -495,6 +520,10 @@ struct ParticleSolver
 																				   gridSize,
 																				   scene->numParticles,
 																				   scene->radius);
+
+					// solve all rigidbody constraints
+					updateRigidBodyShapeMatch();
+
 					std::swap(devTempNewPositions, devNewPositions);
 				}
 			}
@@ -528,7 +557,8 @@ struct ParticleSolver
 	void * devTempStorage = nullptr;
 	size_t devTempStorageSize = 0;
 
-	bool isParticleAdded = false;
+	int rigidBodySize = 0;
+	bool isNotRigidParticlesAdded = false;
 
 	const float3 cellOrigin;
 	const float3 cellSize;
