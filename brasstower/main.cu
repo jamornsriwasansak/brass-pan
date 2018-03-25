@@ -31,22 +31,21 @@ void updateControl()
 		static glm::dvec2 prevMousePos = [&]()
 		{
 			glm::dvec2 mousePos;
-			glfwGetCursorPos(window, &mousePos.y, &mousePos.x);
+			glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
 			return mousePos;
 		}();
 
 		glm::vec2 rotation(0.0f);
 		glm::dvec2 mousePos;
-		glfwGetCursorPos(window, &mousePos.y, &mousePos.x);
+		glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
 
 		//if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
 
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
 			rotation += (mousePos - prevMousePos);
 
-		glm::dvec2 diff = (mousePos - prevMousePos); 
 		prevMousePos = mousePos;
-		renderer->camera.rotate(rotation * glm::vec2(0.005f, 0.005f));
+		renderer->camera.rotate(glm::vec2(rotation.y, rotation.x) * glm::vec2(0.005f, 0.005f));
 	}
 
 	// key control
