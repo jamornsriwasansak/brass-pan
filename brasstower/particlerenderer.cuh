@@ -96,7 +96,7 @@ static GLFWwindow* InitGL(const size_t width, const size_t height)
 
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glfwSwapInterval(1); // vsync
+	//glfwSwapInterval(1); // vsync
 
 	return window;
 }
