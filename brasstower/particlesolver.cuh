@@ -70,32 +70,42 @@ void printPair(T * dev, int size)
 
 // PARTICLE SYSTEM //
 
-__global__ void initializeDevFloat(float * devArr,
-								   const int numParticles,
-								   const float value,
-								   const int offset)
+__global__ void setDevInt(int * devArr,
+						  const int numParticles,
+						  const int value,
+						  const int offset)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 	devArr[i + offset] = value;
 }
 
-__global__ void initializeDevFloat3(float3 * devArr,
-									const int numParticles,
-									const float3 val,
-									const int offset)
+__global__ void setDevFloat(float * devArr,
+							const int numParticles,
+							const float value,
+							const int offset)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+	devArr[i + offset] = value;
+}
+
+__global__ void setDevFloat3(float3 * devArr,
+							 const int numParticles,
+							 const float3 val,
+							 const int offset)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 	devArr[i + offset] = val;
 }
 
-__global__ void initializeBlockPosition(float3 * positions,
-										const int numParticles,
-										const int3 dimension,
-										const float3 startPosition,
-										const float3 step,
-										const int offset)
+__global__ void initPositionBox(float3 * positions,
+								const int numParticles,
+								const int3 dimension,
+								const float3 startPosition,
+								const float3 step,
+								const int offset)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
@@ -108,7 +118,9 @@ __global__ void initializeBlockPosition(float3 * positions,
 // GRID //
 // from White Paper "Particles" by SIMON GREEN 
 
-__device__ int3 calcGridPos(float3 position, float3 origin, float3 cellSize)
+__device__ int3 calcGridPos(float3 position,
+							float3 origin,
+							float3 cellSize)
 {
 	return make_int3((position - origin) / cellSize);
 }
@@ -334,16 +346,32 @@ struct ParticleSolver
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
-		initializeDevFloat<<<numBlocks, numThreads>>>(devInvMasses,
+		setDevFloat<<<numBlocks, numThreads>>>(devInvMasses,
 													  numParticles,
 													  1.0f / mass,
 													  scene->numParticles);
-		initializeBlockPosition<<<numBlocks, numThreads>>>(devPositions,
+		initPositionBox<<<numBlocks, numThreads>>>(devPositions,
 														   numParticles,
 														   make_int3(dimension),
 														   make_float3(startPosition),
 														   make_float3(step),
 														   scene->numParticles);
+		scene->numParticles += numParticles;
+	}
+
+	void addRigidBody(const std::vector<glm::vec3> initialPositions, const float massPerParticle)
+	{
+		int numParticles = initialPositions.size();
+
+		if (scene->numParticles + numParticles > scene->numMaxParticles)
+		{
+			std::string message = std::string(__FILE__) + std::string(" num particles exceed num max particles");
+			throw std::exception(message.c_str());
+		}
+		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+								   &(initialPositions[0].x),
+								   numParticles * sizeof(float) * 3,
+								   cudaMemcpyHostToDevice));
 		scene->numParticles += numParticles;
 	}
 
@@ -463,6 +491,7 @@ struct ParticleSolver
 	float3 * devTempNewPositions;
 	float3 * devVelocities;
 	float  * devInvMasses;
+	int    * devPhases;
 
 	int * devCellId;
 	int * devParticleId;

@@ -30,6 +30,16 @@ struct Plane
 	}
 };
 
+struct RigidBody
+{
+	size_t startIndex;
+	size_t numParticles;
+
+	RigidBody()
+	{
+	}
+};
+
 struct Scene
 {
 	std::vector<Plane> planes;
