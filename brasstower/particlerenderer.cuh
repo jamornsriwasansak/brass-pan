@@ -212,7 +212,6 @@ struct ParticleRenderer
 	{
 		glm::mat4 cameraVpMatrix = camera.vpMatrix();
 		glBindFramebuffer(GL_FRAMEBUFFER, particlesColorCodeFramebufferHandle);
-		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
 		// set to max
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
