@@ -350,6 +350,13 @@ struct ParticleSolver
 		}
 	}
 
+	void moveParticle(const int particleIndex, const glm::vec3 & position)
+	{
+		if (particleIndex < 0 || particleIndex >= scene->numParticles) return;
+		std::cout << particleIndex << " vs " << scene->numParticles << std::endl;
+		setDevArr_float3<<<1, 1>>>(devPositions + particleIndex, make_float3(position.x, position.y, position.z), 1);
+	}
+
 	void addParticles(const glm::ivec3 & dimension, const glm::vec3 & startPosition, const glm::vec3 & step, const float mass)
 	{
 		int numParticles = dimension.x * dimension.y * dimension.z;

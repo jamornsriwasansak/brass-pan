@@ -23,6 +23,7 @@
 GLFWwindow * window;
 ParticleRenderer * renderer;
 ParticleSolver * solver;
+int currentPickingObject = -1;
 
 void updateControl()
 {
@@ -39,10 +40,20 @@ void updateControl()
 		glm::dvec2 mousePos;
 		glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
 
+		static bool isHoldingLeftMouse = false;
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
 		{
-			glm::uvec2 uMousePos(mousePos);
-			renderer->queryParticleColorCode(uMousePos);
+			if (!isHoldingLeftMouse)
+			{
+				glm::uvec2 uMousePos(mousePos);
+				currentPickingObject = renderer->queryParticleColorCode(uMousePos);
+				isHoldingLeftMouse = true;
+			}
+		}
+		else
+		{
+			currentPickingObject = -1;
+			isHoldingLeftMouse = false;
 		}
 
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
@@ -127,6 +138,7 @@ int main()
 		updateControl();
 
 		// solver update
+		solver->moveParticle(currentPickingObject, glm::vec3(0, 4, 0));
 		solver->update(2, 1.0f / 60.0f);
 
 		// renderer update
