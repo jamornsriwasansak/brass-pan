@@ -24,6 +24,7 @@ GLFWwindow * window;
 ParticleRenderer * renderer;
 ParticleSolver * solver;
 int currentPickingObject = -1;
+glm::vec2 currentPickingObjectScreenCoord;
 
 void updateControl()
 {
@@ -43,6 +44,10 @@ void updateControl()
 		static bool isHoldingLeftMouse = false;
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
 		{
+			int width, height;
+			glfwGetWindowSize(window, &width, &height);
+			currentPickingObjectScreenCoord = glm::vec2((float)mousePos.x / (float)width, (float)mousePos.y / (float)height);
+
 			if (!isHoldingLeftMouse)
 			{
 				glm::uvec2 uMousePos(mousePos);
@@ -82,6 +87,26 @@ void updateControl()
 		control = length > 0 ? control / length : control;
 		renderer->camera.shift(control * 0.1f);
 	}
+}
+
+void computePickedParticlePosition(glm::vec3 * particlePosition, glm::vec3 * particleVelocity)
+{
+	glm::vec3 pickedParticlePosition = solver->getParticlePosition(currentPickingObject);
+
+	// compute space that allows the object to be moved
+	float d = glm::dot(pickedParticlePosition - renderer->camera.pos, renderer->camera.dir);
+	glm::vec3 spanOrigin = renderer->camera.pos + d * renderer->camera.dir;
+	glm::vec3 spanBasisZ = glm::normalize(-renderer->camera.dir);
+	glm::vec3 spanBasisX = glm::normalize(glm::cross(glm::vec3(0, 1, 0), spanBasisZ));
+	glm::vec3 spanBasisY = glm::normalize(glm::cross(spanBasisZ, spanBasisX));
+	float spanYSize = d * std::tan(renderer->camera.fovY * 0.5f);
+	float spanXSize = spanYSize * renderer->camera.aspectRatio;
+	glm::vec3 newPickedParticlePosition = spanOrigin
+		+ (currentPickingObjectScreenCoord.x - 0.5f) * 2.0f * spanBasisX * spanXSize
+		+ (0.5f - currentPickingObjectScreenCoord.y) * 2.0f * spanBasisY * spanYSize;
+
+	*particlePosition = newPickedParticlePosition;
+	*particleVelocity = (newPickedParticlePosition - pickedParticlePosition) * 60.0f;
 }
 
 std::vector<glm::vec3> CreateBoxParticles(const glm::ivec3 & dimension, const glm::vec3 & startPosition, const glm::vec3 & stepSize)
@@ -137,9 +162,18 @@ int main()
 	{
 		updateControl();
 
-		// solver update
-		solver->moveParticle(currentPickingObject, glm::vec3(0, 4, 0));
-		solver->update(2, 1.0f / 60.0f);
+		// pick particle 1
+		if (currentPickingObject >= 0 && currentPickingObject < scene->numParticles)
+		{
+			glm::vec3 position, velocity;
+			computePickedParticlePosition(&position, &velocity);
+			solver->update(2, 1.0f / 60.0f, currentPickingObject, position, velocity);
+		}
+		else
+		{
+			// solver update
+			solver->update(2, 1.0f / 60.0f);
+		}
 
 		// renderer update
 		float4 *dptr = renderer->mapSsbo();

@@ -350,11 +350,21 @@ struct ParticleSolver
 		}
 	}
 
-	void moveParticle(const int particleIndex, const glm::vec3 & position)
+	glm::vec3 getParticlePosition(const int particleIndex)
+	{
+		if (particleIndex < 0 || particleIndex >= scene->numParticles) return glm::vec3(0.0f);
+		float3 * tmp = (float3 *)malloc(sizeof(float3));
+		cudaMemcpy(tmp, devPositions + particleIndex, sizeof(float3), cudaMemcpyDeviceToHost);
+		glm::vec3 result(tmp->x, tmp->y, tmp->z);
+		free(tmp);
+		return result;
+	}
+
+	void setParticle(const int particleIndex, const glm::vec3 & position, const glm::vec3 & velocity)
 	{
 		if (particleIndex < 0 || particleIndex >= scene->numParticles) return;
-		std::cout << particleIndex << " vs " << scene->numParticles << std::endl;
 		setDevArr_float3<<<1, 1>>>(devPositions + particleIndex, make_float3(position.x, position.y, position.z), 1);
+		setDevArr_float3<<<1, 1>>>(devVelocities + particleIndex, make_float3(velocity.x, velocity.y, velocity.z), 1);
 	}
 
 	void addParticles(const glm::ivec3 & dimension, const glm::vec3 & startPosition, const glm::vec3 & step, const float mass)
@@ -463,7 +473,11 @@ struct ParticleSolver
 		
 	}
 
-	void update(const int numSubTimeStep, const float deltaTime)
+	void update(const int numSubTimeStep,
+				const float deltaTime,
+				const int pickedParticleId = -1,
+				const glm::vec3 & pickedParticlePosition = glm::vec3(0.0f),
+				const glm::vec3 & pickedParticleVelocity = glm::vec3(0.0f))
 	{
 		float subDeltaTime = deltaTime / (float)numSubTimeStep;
 		int numBlocks, numThreads;
@@ -475,6 +489,13 @@ struct ParticleSolver
 												   devInvMasses,
 												   scene->numParticles,
 												   subDeltaTime);
+
+			// we need to make picked particle immovable
+			if (pickedParticleId >= 0 && pickedParticleId < scene->numParticles)
+			{
+				setParticle(pickedParticleId, pickedParticlePosition, glm::vec3(0.0f));
+			}
+
 			predictPositions<<<numBlocks, numThreads>>>(devNewPositions,
 														devPositions,
 														devVelocities,
@@ -541,6 +562,13 @@ struct ParticleSolver
 													  scene->numParticles,
 													   1.0f / subDeltaTime);
 			std::swap(devNewPositions, devPositions); // update position
+		}
+
+		// we need to make picked particle immovable
+		if (pickedParticleId >= 0 && pickedParticleId < scene->numParticles)
+		{
+			glm::vec3 solvedPickedParticlePosition = getParticlePosition(pickedParticleId);
+			setParticle(pickedParticleId, solvedPickedParticlePosition, pickedParticleVelocity);
 		}
 	}
 
