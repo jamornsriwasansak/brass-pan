@@ -555,12 +555,6 @@ struct ParticleSolver
 		findStartId<<<numBlocks, numThreads>>>(devCellStart, devSortedCellId, scene->numParticles);
 	}
 
-	void updateRigidBodyShapeMatch()
-	{
-		// compute center of mass
-		
-	}
-
 	void update(const int numSubTimeStep,
 				const float deltaTime,
 				const int pickedParticleId = -1,
