@@ -548,11 +548,10 @@ struct ParticleSolver
 																				   gridSize,
 																				   scene->numParticles,
 																				   scene->radius);
+					std::swap(devTempNewPositions, devNewPositions);
 
 					// solve all rigidbody constraints
 					updateRigidBodyShapeMatch();
-
-					std::swap(devTempNewPositions, devNewPositions);
 				}
 			}
 
