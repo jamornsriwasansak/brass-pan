@@ -9,6 +9,7 @@
 #endif
 
 #include "cuda/helper.cuh"
+#include "cuda/cudamatrix.cuh"
 #include "cuda/cudaglm.cuh"
 #include "scene.h"
 
@@ -324,27 +325,45 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 // one block per one shape
 #define NUM_MAX_PARTICLE_PER_RIGID_BODY 64
-__global__ void shapeMatchingAlphaOne(float3 * __restrict__ newPositionsNext,
-									  const float3 * __restrict__ newPositionsPrev,
+__global__ void shapeMatchingAlphaOne(matrix3x4 * __restrict__ transformations,
+									  float3 * __restrict__ positions,
+									  const float3 * __restrict__ initialPositions,
 									  const int2 * __restrict__ rigidBodyParticleIdRange,
 									  const float3 * __restrict__ rigidBodyCM)
 {
-	int rigidBodyId = blockIdx.x;
-	int2 particleRange = rigidBodyParticleIdRange[rigidBodyId];
-
-	int numParticles = particleRange.y - particleRange.x;
-	int particleId = particleRange.x + threadIdx.x;
-
+	// typename stuffs
 	typedef cub::BlockReduce<float3, NUM_MAX_PARTICLE_PER_RIGID_BODY> BlockReduceT;
 	__shared__ typename BlockReduceT::TempStorage TempStorageT;
 
-	float3 val = (threadIdx.x >= numParticles) ? make_float3(0.0f) : newPositionsPrev[particleId];
-	float3 newCM = BlockReduceT(TempStorageT).Sum(val) / (float)numParticles;
-	if (threadIdx.x > 0) return;
+	// init rigidBodyId, particleRange and numParticles
+	int rigidBodyId = blockIdx.x;
+	int2 particleRange = rigidBodyParticleIdRange[rigidBodyId];
+	int numParticles = particleRange.y - particleRange.x;
+	int particleId = particleRange.x + threadIdx.x;
+	if (threadIdx.x >= numParticles) return;
 
-	float3 initialCM = rigidBodyCM[rigidBodyId];
-	float3 translate = newCM - initialCM;
-	printf("%f %f %f\n", translate.x, translate.y, translate.z);
+	float3 position = positions[particleId];
+
+	// find center of mass using block reduce
+	__shared__ float3 initialCM, newCM, translate;
+	float3 CM = BlockReduceT(TempStorageT).Sum(position) / (float)numParticles;	
+	if (threadIdx.x == 0)
+	{
+		initialCM = rigidBodyCM[rigidBodyId];
+		newCM = CM;
+		translate = newCM - initialCM;
+	}
+	__syncthreads();
+
+	float3 initialPosition = initialPositions[particleId];
+	positions[particleId] = translate + initialPosition;
+
+	//float3 matchedPosition = ;
+	/*matrix3x4 transform = make_matrix3x4();
+	transform.row[0].w = translate.x;
+	transform.row[1].w = translate.y;
+	transform.row[2].w = translate.z;*/
+	//transformations[rigidBodyId] = transform;
 }
 
 struct ParticleSolver
@@ -367,6 +386,8 @@ struct ParticleSolver
 		// alloc rigid body
 		checkCudaErrors(cudaMalloc(&devRigidBodyParticleIdRange, scene->numMaxRigidBodies * sizeof(int2)));
 		checkCudaErrors(cudaMalloc(&devRigidBodyCM, scene->numMaxRigidBodies * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devRigidBodyTransformations, scene->numMaxRigidBodies * sizeof(matrix3x4)));
+		checkCudaErrors(cudaMalloc(&devRigidBodyInitialPositions, scene->numMaxRigidBodies * NUM_MAX_PARTICLE_PER_RIGID_BODY * sizeof(float3)));
 
 		// alloc phase counter
 		checkCudaErrors(cudaMalloc(&devPhaseCounter, sizeof(int)));
@@ -473,7 +494,10 @@ struct ParticleSolver
 								   &(initialPositions[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
-
+		checkCudaErrors(cudaMemcpy(devRigidBodyInitialPositions + scene->numParticles,
+								   &(initialPositions[0].x),
+								   numParticles * sizeof(float) * 3,
+								   cudaMemcpyHostToDevice));
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
@@ -613,13 +637,14 @@ struct ParticleSolver
 																				   scene->numParticles,
 																				   scene->radius);
 					std::swap(devTempNewPositions, devNewPositions);
-
 					// solve all rigidbody constraints
-					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devTempNewPositions,
+					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyTransformations,
 																									  devNewPositions,
+																									  devRigidBodyInitialPositions,
 																									  devRigidBodyParticleIdRange,
 																									  devRigidBodyCM);
-					std::swap(devTempNewPositions, devNewPositions);
+					cudaDeviceSynchronize();
+					//std::swap(devTempNewPositions, devNewPositions);
 				}
 			}
 
@@ -641,33 +666,35 @@ struct ParticleSolver
 
 	/// TODO:: implement object's destroyer
 
-	float3 * devPositions;
-	float3 * devNewPositions;
-	float3 * devTempNewPositions;
-	float3 * devVelocities;
-	float  * devMasses;
-	float  * devInvMasses;
-	int    * devPhases;
-	int    * devPhaseCounter;
+	float3 *	devPositions;
+	float3 *	devNewPositions;
+	float3 *	devTempNewPositions;
+	float3 *	devVelocities;
+	float *		devMasses;
+	float *		devInvMasses;
+	int *		devPhases;
+	int *		devPhaseCounter;
 
-	int * devCellId;
-	int * devParticleId;
-	int * devCellStart;
+	int *		devSortedCellId;
+	int *		devSortedParticleId;
 
-	int * devSortedCellId;
-	int * devSortedParticleId;
+	int2 *		devRigidBodyParticleIdRange;
+	float3 *	devRigidBodyInitialPositions;
+	float3 *	devRigidBodyCM; // center of mass
+	matrix3x4 *	devRigidBodyTransformations;
 
-	int2 * devRigidBodyParticleIdRange;
-	float3 * devRigidBodyCM; // center of mass
+	void *		devTempStorage = nullptr;
+	size_t		devTempStorageSize = 0;
 
-	void * devTempStorage = nullptr;
-	size_t devTempStorageSize = 0;
+	int			devMaxRigidBodyParticleId = 0;
+	bool		isNotRigidParticlesAdded = false;
 
-	int devMaxRigidBodyParticleId = 0;
-	bool isNotRigidParticlesAdded = false;
+	int *			devCellId;
+	int *			devParticleId;
+	int *			devCellStart;
+	const float3	cellOrigin;
+	const float3	cellSize;
+	const int3		gridSize;
 
-	const float3 cellOrigin;
-	const float3 cellSize;
-	const int3 gridSize;
 	std::shared_ptr<Scene> scene;
 };

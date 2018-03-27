@@ -37,15 +37,15 @@ inline float dot3(float4 a, float4 b)
 }
 
 /*****************************************
-Matrix3x3
+Matrix3x4
 /*****************************************/
 typedef struct
 {
 	float4 row[3];
-}matrix3;
+}matrix3x4;
 
 __host__ __device__
-inline void set_zero(matrix3& m)
+inline void set_zero(matrix3x4& m)
 {
 	m.row[0] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
 	m.row[1] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -53,9 +53,9 @@ inline void set_zero(matrix3& m)
 }
 
 __host__ __device__
-inline matrix3 make_matrix3()
+inline matrix3x4 make_matrix3x4()
 {
-	matrix3 m;
+	matrix3x4 m;
 	m.row[0] = make_float4(1, 0, 0, 0);
 	m.row[1] = make_float4(0, 1, 0, 0);
 	m.row[2] = make_float4(0, 0, 1, 0);
@@ -63,9 +63,9 @@ inline matrix3 make_matrix3()
 }
 
 __host__ __device__
-inline matrix3 make_matrix3(float x)
+inline matrix3x4 make_matrix3x4(float x)
 {
-	matrix3 m;
+	matrix3x4 m;
 	m.row[0] = make_float4(x, x, x, x);
 	m.row[1] = make_float4(x, x, x, x);
 	m.row[2] = make_float4(x, x, x, x);
@@ -73,28 +73,28 @@ inline matrix3 make_matrix3(float x)
 }
 
 __host__ __device__
-inline void set_identity(matrix3& m)
+inline void set_identity(matrix3x4 * m)
 {
-	m.row[0] = make_float4(1, 0, 0, 0);
-	m.row[1] = make_float4(0, 1, 0, 0);
-	m.row[2] = make_float4(0, 0, 1, 0);
+	m->row[0] = make_float4(1, 0, 0, 0);
+	m->row[1] = make_float4(0, 1, 0, 0);
+	m->row[2] = make_float4(0, 0, 1, 0);
 }
 
 __host__ __device__
-inline matrix3 transpose(const matrix3 m)
+inline matrix3x4 transpose(const matrix3x4 & m)
 {
-	matrix3 out;
+	matrix3x4 out;
 	out.row[0] = make_float4(m.row[0].x, m.row[1].x, m.row[2].x, 0.f);
 	out.row[1] = make_float4(m.row[0].y, m.row[1].y, m.row[2].y, 0.f);
 	out.row[2] = make_float4(m.row[0].z, m.row[1].z, m.row[2].z, 0.f);
 	return out;
 }
 
-__host__ __device__
-inline matrix3 mul(matrix3& a, matrix3& b)
+__device__
+inline matrix3x4 mul(matrix3x4& a, matrix3x4& b)
 {
-	matrix3 transB = transpose(b);
-	matrix3 ans;
+	matrix3x4 transB = transpose(b);
+	matrix3x4 ans;
 	//        why this doesn't run when 0ing in the for{}
 	a.row[0].w = 0.f;
 	a.row[1].w = 0.f;
@@ -116,7 +116,7 @@ Quaternion
 
 typedef float4 quaternion;
 
-__host__ __device__
+__device__
 inline quaternion mul(quaternion a, quaternion b)
 {
 	quaternion ans;
@@ -133,7 +133,7 @@ inline quaternion inverse(const quaternion q)
 	return make_float4(-q.x, -q.y, -q.z, q.w);
 }
 
-__host__ __device__
+__device__
 inline float4 rotate(const quaternion q, const float4 vec)
 {
 	quaternion qInv = inverse(q);
@@ -144,10 +144,10 @@ inline float4 rotate(const quaternion q, const float4 vec)
 }
 
 __host__ __device__
-inline matrix3 extract_rotation_matrix(quaternion quat)
+inline matrix3x4 extract_rotation_matrix(quaternion quat)
 {
 	float4 quat2 = make_float4(quat.x*quat.x, quat.y*quat.y, quat.z*quat.z, 0.f);
-	matrix3 out;
+	matrix3x4 out;
 
 	out.row[0].x = 1 - 2 * quat2.y - 2 * quat2.z;
 	out.row[0].y = 2 * quat.x*quat.y - 2 * quat.w*quat.z;
