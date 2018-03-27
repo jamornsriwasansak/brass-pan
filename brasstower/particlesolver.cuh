@@ -71,13 +71,13 @@ void printPair(T * dev, int size)
 
 // PARTICLE SYSTEM //
 
-__global__ void increment(int * x)
+__global__ void increment(int * __restrict__ x)
 {
 	atomicAdd(x, 1);
 }
 
-__global__ void setDevArr_devIntPtr(int * devArr,
-								    const int * value,
+__global__ void setDevArr_devIntPtr(int * __restrict__ devArr,
+								    const int * __restrict__ value,
 								    const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -85,7 +85,7 @@ __global__ void setDevArr_devIntPtr(int * devArr,
 	devArr[i] = *value;
 }
 
-__global__ void setDevArr_int(int * devArr,
+__global__ void setDevArr_int(int * __restrict__ devArr,
 						  const int value,
 						  const int numParticles)
 {
@@ -94,7 +94,7 @@ __global__ void setDevArr_int(int * devArr,
 	devArr[i] = value;
 }
 
-__global__ void setDevArr_float(float * devArr,
+__global__ void setDevArr_float(float * __restrict__ devArr,
 								const float value,
 								const int numParticles)
 {
@@ -103,7 +103,7 @@ __global__ void setDevArr_float(float * devArr,
 	devArr[i] = value;
 }
 
-__global__ void setDevArr_float3(float3 * devArr,
+__global__ void setDevArr_float3(float3 * __restrict__ devArr,
 								 const float3 val,
 								 const int numParticles)
 {
@@ -112,9 +112,9 @@ __global__ void setDevArr_float3(float3 * devArr,
 	devArr[i] = val;
 }
 
-__global__ void initPositionBox(float3 * positions,
-								int * phases,
-								int * phaseCounter,
+__global__ void initPositionBox(float3 * __restrict__ positions,
+								int * __restrict__ phases,
+								int * __restrict__ phaseCounter,
 								const int3 dimension,
 								const float3 startPosition,
 								const float3 step,
@@ -150,9 +150,9 @@ __device__ int calcGridAddress(int3 gridPos, int3 gridSize)
 	return (gridPos.z * gridSize.y * gridSize.x) + (gridPos.y * gridSize.x) + gridPos.x;
 }
 
-__global__ void updateGridId(int * gridIds,
-							 int * particleIds,
-							 const float3 * positions,
+__global__ void updateGridId(int * __restrict__ gridIds,
+							 int * __restrict__ particleIds,
+							 const float3 * __restrict__ positions,
 							 const float3 cellOrigin,
 							 const float3 cellSize,
 							 const int3 gridSize,
@@ -241,8 +241,8 @@ __global__ void planeStabilize(float3 * positions,
 
 // PROJECT CONSTRAINTS //
 
-__global__ void particlePlaneCollisionConstraint(float3 * newPositions,
-												 float3 * positions,
+__global__ void particlePlaneCollisionConstraint(float3 * __restrict__ newPositions,
+												 float3 * __restrict__ positions,
 												 const int numParticles,
 												 const float3 planeOrigin,
 												 const float3 planeNormal,
@@ -259,12 +259,12 @@ __global__ void particlePlaneCollisionConstraint(float3 * newPositions,
 	positions[i] += (2.0f * diffPosition + distance) * planeNormal * ENERGY_LOST_RATIO;
 }
 
-__global__ void particleParticleCollisionConstraint(float3 * newPositionsNext,
-													const float3 * newPositionsPrev,
-													const int* phases,
-													const int* sortedCellId,
-													const int* sortedParticleId,
-													const int* cellStart, 
+__global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
+													const float3 * __restrict__ newPositionsPrev,
+													const int* __restrict__ phases,
+													const int* __restrict__ sortedCellId,
+													const int* __restrict__ sortedParticleId,
+													const int* __restrict__ cellStart, 
 													const float3 cellOrigin,
 													const float3 cellSize,
 													const int3 gridSize,
