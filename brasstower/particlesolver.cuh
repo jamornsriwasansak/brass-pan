@@ -512,7 +512,7 @@ struct ParticleSolver
 												scene->numParticles);
 		size_t tempStorageSize = 0;
 		// get temp storage size (not sorting yet)
-		cub::DeviceRadixSort::SortPairs(devTempStorage,
+		cub::DeviceRadixSort::SortPairs(NULL,
 										tempStorageSize,
 										devCellId,
 										devSortedCellId,
