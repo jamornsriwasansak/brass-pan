@@ -78,28 +78,37 @@ __global__ void increment(int * __restrict__ x)
 
 __global__ void setDevArr_devIntPtr(int * __restrict__ devArr,
 								    const int * __restrict__ value,
-								    const int numParticles)
+								    const int numValues)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
-	if (i >= numParticles) { return; }
+	if (i >= numValues) { return; }
 	devArr[i] = *value;
 }
 
 __global__ void setDevArr_int(int * __restrict__ devArr,
 						  const int value,
-						  const int numParticles)
+						  const int numValues)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
-	if (i >= numParticles) { return; }
+	if (i >= numValues) { return; }
 	devArr[i] = value;
 }
 
 __global__ void setDevArr_float(float * __restrict__ devArr,
 								const float value,
-								const int numParticles)
+								const int numValues)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
-	if (i >= numParticles) { return; }
+	if (i >= numValues) { return; }
+	devArr[i] = value;
+}
+
+__global__ void setDevArr_int2(int2 * __restrict__ devArr,
+							   const int2 value,
+							   const int numValues)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numValues) { return; }
 	devArr[i] = value;
 }
 
@@ -190,8 +199,8 @@ __global__ void findStartId(int * cellStart,
 
 // SOLVER //
 
-__global__ void applyForces(float3 * velocities,
-							const float * invMass,
+__global__ void applyForces(float3 * __restrict__ velocities,
+							const float * __restrict__ invMass,
 							const int numParticles,
 							const float deltaTime)
 {
@@ -200,9 +209,9 @@ __global__ void applyForces(float3 * velocities,
 	velocities[i] += make_float3(0.0f, -9.8f, 0.0f) * deltaTime;
 }
 
-__global__ void predictPositions(float3 * newPositions,
-								 const float3 * positions,
-								 const float3 * velocities,
+__global__ void predictPositions(float3 * __restrict__ newPositions,
+								 const float3 * __restrict__ positions,
+								 const float3 * __restrict__ velocities,
 								 const int numParticles,
 								 const float deltaTime)
 {
@@ -211,9 +220,9 @@ __global__ void predictPositions(float3 * newPositions,
 	newPositions[i] = positions[i] + velocities[i] * deltaTime;
 }
 
-__global__ void updateVelocity(float3 * velocities,
-							   const float3 * newPositions,
-							   const float3 * positions,
+__global__ void updateVelocity(float3 * __restrict__ velocities,
+							   const float3 * __restrict__ newPositions,
+							   const float3 * __restrict__ positions,
 							   const int numParticles,
 							   const float invDeltaTime)
 {
@@ -222,8 +231,8 @@ __global__ void updateVelocity(float3 * velocities,
 	velocities[i] = (newPositions[i] - positions[i]) * invDeltaTime;
 }
 
-__global__ void planeStabilize(float3 * positions,
-							   float3 * newPositions,
+__global__ void planeStabilize(float3 * __restrict__ positions,
+							   float3 * __restrict__ newPositions,
 							   const int numParticles,
 							   const float3 planeOrigin,
 							   const float3 planeNormal,
@@ -313,6 +322,31 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 	newPositionsNext[i] = positionNext;
 }
 
+// one block per one shape
+#define NUM_MAX_PARTICLE_PER_RIGID_BODY 64
+__global__ void shapeMatchingAlphaOne(float3 * __restrict__ newPositionsNext,
+									  const float3 * __restrict__ newPositionsPrev,
+									  const int2 * __restrict__ rigidBodyParticleIdRange,
+									  const float3 * __restrict__ rigidBodyCM)
+{
+	int rigidBodyId = blockIdx.x;
+	int2 particleRange = rigidBodyParticleIdRange[rigidBodyId];
+
+	int numParticles = particleRange.y - particleRange.x;
+	int particleId = particleRange.x + threadIdx.x;
+
+	typedef cub::BlockReduce<float3, NUM_MAX_PARTICLE_PER_RIGID_BODY> BlockReduceT;
+	__shared__ typename BlockReduceT::TempStorage TempStorageT;
+
+	float3 val = (threadIdx.x >= numParticles) ? make_float3(0.0f) : newPositionsPrev[particleId];
+	float3 newCM = BlockReduceT(TempStorageT).Sum(val) / (float)numParticles;
+	if (threadIdx.x > 0) return;
+
+	float3 initialCM = rigidBodyCM[rigidBodyId];
+	float3 translate = newCM - initialCM;
+	printf("%f %f %f\n", translate.x, translate.y, translate.z);
+}
+
 struct ParticleSolver
 {
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
@@ -321,16 +355,24 @@ struct ParticleSolver
 		cellSize(make_float3(scene->radius * 2.0f)),
 		gridSize(make_int3(128))
 	{
+		// alloc particle vars
 		checkCudaErrors(cudaMalloc(&devPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devTempNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
-		checkCudaErrors(cudaMalloc(&devPhaseCounter, sizeof(int)));
 
+		// alloc rigid body
+		checkCudaErrors(cudaMalloc(&devRigidBodyParticleIdRange, scene->numMaxRigidBodies * sizeof(int2)));
+		checkCudaErrors(cudaMalloc(&devRigidBodyCM, scene->numMaxRigidBodies * sizeof(float3)));
+
+		// alloc phase counter
+		checkCudaErrors(cudaMalloc(&devPhaseCounter, sizeof(int)));
 		checkCudaErrors(cudaMemset(devPhaseCounter, 0, sizeof(int)));
 
+		// alloc grid accel
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devParticleId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devSortedCellId, scene->numMaxParticles * sizeof(int)));
@@ -372,7 +414,7 @@ struct ParticleSolver
 		int numParticles = dimension.x * dimension.y * dimension.z;
 
 		// check if number of particles exceed num max particles or not
-		if (scene->numParticles + numParticles > scene->numMaxParticles)
+		if (scene->numParticles + numParticles >= scene->numMaxParticles)
 		{
 			std::string message = std::string(__FILE__) + std::string(" num particles exceed num max particles");
 			throw std::exception(message.c_str());
@@ -388,6 +430,10 @@ struct ParticleSolver
 												   make_int3(dimension),
 												   make_float3(startPosition),
 												   make_float3(step),
+												   numParticles);
+		// set masses
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
+												   mass,
 												   numParticles);
 		// set inv masses
 		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
@@ -406,11 +452,21 @@ struct ParticleSolver
 			throw std::exception(message.c_str());
 		}
 
-		if (scene->numParticles + numParticles > scene->numMaxParticles)
+		if (scene->numParticles + numParticles >= scene->numMaxParticles)
 		{
 			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
 			throw std::exception(message.c_str());
 		}
+
+		if (scene->numRigidBodies + 1 >= scene->numMaxRigidBodies)
+		{
+			std::string message = std::string(__FILE__) + std::string("num rigid bodies exceed num max rigid bodies");
+			throw std::exception(message.c_str());
+		}
+
+		glm::vec3 cm = glm::vec3(0.0f);
+		for (const glm::vec3 & position : initialPositions) { cm += position; }
+		cm /= (float)initialPositions.size();
 
 		// set positions
 		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
@@ -429,11 +485,19 @@ struct ParticleSolver
 		setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
 													   devPhaseCounter,
 													   numParticles);
+		// set range for particle id
+		setDevArr_int2<<<1, 1>>>(devRigidBodyParticleIdRange + scene->numRigidBodies,
+								 make_int2(scene->numParticles, scene->numParticles + numParticles),
+								 1);
+		// set center of mass
+		setDevArr_float3<<<1, 1>>>(devRigidBodyCM + scene->numRigidBodies,
+								   make_float3(cm.x, cm.y, cm.z), 1);
 		// increment phase counter
 		increment<<<1, 1>>>(devPhaseCounter);
 		
 		scene->numParticles += numParticles;
-		rigidBodySize = scene->numParticles;
+		scene->numRigidBodies += 1;
+		devMaxRigidBodyParticleId = scene->numParticles;
 	}
 
 	void updateGrid(int numBlocks, int numThreads)
@@ -551,7 +615,11 @@ struct ParticleSolver
 					std::swap(devTempNewPositions, devNewPositions);
 
 					// solve all rigidbody constraints
-					updateRigidBodyShapeMatch();
+					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devTempNewPositions,
+																									  devNewPositions,
+																									  devRigidBodyParticleIdRange,
+																									  devRigidBodyCM);
+					std::swap(devTempNewPositions, devNewPositions);
 				}
 			}
 
@@ -577,6 +645,7 @@ struct ParticleSolver
 	float3 * devNewPositions;
 	float3 * devTempNewPositions;
 	float3 * devVelocities;
+	float  * devMasses;
 	float  * devInvMasses;
 	int    * devPhases;
 	int    * devPhaseCounter;
@@ -588,10 +657,13 @@ struct ParticleSolver
 	int * devSortedCellId;
 	int * devSortedParticleId;
 
+	int2 * devRigidBodyParticleIdRange;
+	float3 * devRigidBodyCM; // center of mass
+
 	void * devTempStorage = nullptr;
 	size_t devTempStorageSize = 0;
 
-	int rigidBodySize = 0;
+	int devMaxRigidBodyParticleId = 0;
 	bool isNotRigidParticlesAdded = false;
 
 	const float3 cellOrigin;

@@ -43,7 +43,10 @@ struct RigidBody
 struct Scene
 {
 	std::vector<Plane> planes;
-	size_t numParticles;
-	size_t numMaxParticles;
+	size_t numParticles = 0;
+	size_t numMaxParticles = 0;
+
+	size_t numRigidBodies = 0;
+	size_t numMaxRigidBodies = 0;
 	float radius;
 };
