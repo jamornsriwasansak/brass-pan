@@ -115,10 +115,19 @@ __global__ void setDevArr_int2(int2 * __restrict__ devArr,
 
 __global__ void setDevArr_float3(float3 * __restrict__ devArr,
 								 const float3 val,
-								 const int numParticles)
+								 const int numValues)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
-	if (i >= numParticles) { return; }
+	if (i >= numValues) { return; }
+	devArr[i] = val;
+}
+
+__global__ void setDevArr_float4(float4 * __restrict__ devArr,
+								 const float4 val,
+								 const int numValues)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numValues) { return; }
 	devArr[i] = val;
 }
 
