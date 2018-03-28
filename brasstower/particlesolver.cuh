@@ -334,7 +334,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 // one block per one shape
 #define NUM_MAX_PARTICLE_PER_RIGID_BODY 64
-__global__ void shapeMatchingAlphaOne(matrix3x4 * __restrict__ transformations,
+__global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 									  float3 * __restrict__ positions,
 									  const float3 * __restrict__ initialPositions,
 									  const int2 * __restrict__ rigidBodyParticleIdRange,
@@ -364,15 +364,11 @@ __global__ void shapeMatchingAlphaOne(matrix3x4 * __restrict__ transformations,
 	}
 	__syncthreads();
 
-	float3 initialPosition = initialPositions[particleId];
-	positions[particleId] = translate + initialPosition;
+	matrix3 rotationMatrix = extract_rotation_matrix(rotations[rigidBodyId]);
+	// compute rotation matrix
 
-	//float3 matchedPosition = ;
-	/*matrix3x4 transform = make_matrix3x4();
-	transform.row[0].w = translate.x;
-	transform.row[1].w = translate.y;
-	transform.row[2].w = translate.z;*/
-	//transformations[rigidBodyId] = transform;
+	float3 initialPosition = initialPositions[particleId];
+	positions[particleId] = translate + rotationMatrix * initialPosition;
 }
 
 struct ParticleSolver
@@ -395,8 +391,11 @@ struct ParticleSolver
 		// alloc rigid body
 		checkCudaErrors(cudaMalloc(&devRigidBodyParticleIdRange, scene->numMaxRigidBodies * sizeof(int2)));
 		checkCudaErrors(cudaMalloc(&devRigidBodyCM, scene->numMaxRigidBodies * sizeof(float3)));
-		checkCudaErrors(cudaMalloc(&devRigidBodyTransformations, scene->numMaxRigidBodies * sizeof(matrix3x4)));
 		checkCudaErrors(cudaMalloc(&devRigidBodyInitialPositions, scene->numMaxRigidBodies * NUM_MAX_PARTICLE_PER_RIGID_BODY * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devRigidBodyRotations, scene->numMaxRigidBodies * sizeof(quaternion)));
+		int numBlocksRigidBody, numThreadsRigidBody;
+		GetNumBlocksNumThreads(&numBlocksRigidBody, &numThreadsRigidBody, scene->numMaxRigidBodies);
+		setDevArr_float4<<<numBlocksRigidBody, numThreadsRigidBody>>>(devRigidBodyRotations, make_float4(0, 0, 0, 1), scene->numMaxRigidBodies);
 
 		// alloc phase counter
 		checkCudaErrors(cudaMalloc(&devPhaseCounter, sizeof(int)));
@@ -641,7 +640,7 @@ struct ParticleSolver
 																				   scene->radius);
 					std::swap(devTempNewPositions, devNewPositions);
 					// solve all rigidbody constraints
-					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyTransformations,
+					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
 																									  devNewPositions,
 																									  devRigidBodyInitialPositions,
 																									  devRigidBodyParticleIdRange,
@@ -684,7 +683,7 @@ struct ParticleSolver
 	int2 *		devRigidBodyParticleIdRange;
 	float3 *	devRigidBodyInitialPositions;
 	float3 *	devRigidBodyCM; // center of mass
-	matrix3x4 *	devRigidBodyTransformations;
+	quaternion * devRigidBodyRotations;
 
 	void *		devTempStorage = nullptr;
 	size_t		devTempStorageSize = 0;
