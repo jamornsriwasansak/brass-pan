@@ -75,12 +75,22 @@ inline matrix3 transpose(const matrix3 & m)
 }
 
 __host__ __device__
+inline matrix3 operator+(const matrix3 & a, const matrix3 & b)
+{
+	matrix3 out;
+	out.col[0] = a.col[0] + b.col[0];
+	out.col[1] = a.col[1] + b.col[1];
+	out.col[2] = a.col[2] + b.col[2];
+	return out;
+}
+
+__host__ __device__
 inline float3 operator*(const matrix3 & m, const float3 & a)
 {
 	float3 out;
-	out = m.col[0] * a;
-	out += m.col[1] * a;
-	out += m.col[2] * a;
+	out = m.col[0] * a.x;
+	out += m.col[1] * a.y;
+	out += m.col[2] * a.z;
 	return out;
 }
 
@@ -94,10 +104,10 @@ __device__
 inline quaternion mul(quaternion a, quaternion b)
 {
 	quaternion ans;
-	ans = cross3(a, b);
-	ans = make_float4(ans.x + a.w*b.x + b.w*a.x + b.w*a.y, ans.y + a.w*b.y + b.w*a.z, ans.z + a.w*b.z, ans.w + a.w*b.w + b.w*a.w);
-	//        ans.w = a.w*b.w - (a.x*b.x+a.y*b.y+a.z*b.z);
-	ans.w = a.w*b.w - dot3(a, b);
+	ans.x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y;  // i
+	ans.y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x;  // j
+	ans.z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w;  // k
+	ans.w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z;  // 1
 	return ans;
 }
 
@@ -120,7 +130,7 @@ inline float4 rotate(const quaternion q, const float4 vec)
 __host__ __device__
 inline matrix3 extract_rotation_matrix(quaternion quat)
 {
-	float4 quat2 = make_float4(quat.x*quat.x, quat.y*quat.y, quat.z*quat.z, 0.f);
+	float4 quat2 = quat * quat;
 	matrix3 out;
 
 	out.col[0].x = 1 - 2 * quat2.y - 2 * quat2.z;
