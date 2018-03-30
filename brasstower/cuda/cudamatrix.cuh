@@ -112,6 +112,20 @@ inline quaternion mul(quaternion a, quaternion b)
 }
 
 __host__ __device__
+inline quaternion angleAxis(const float3 & direction, const float angle)
+{
+	quaternion result;
+	float sinHalfAngle = sin(angle * 0.5f);
+	float cosHalfAngle = cos(angle * 0.5f);
+
+	result.x = direction.x * sinHalfAngle;
+	result.y = direction.y * sinHalfAngle;
+	result.z = direction.z * sinHalfAngle;
+	result.w = cosHalfAngle;
+	return result;
+}
+
+__host__ __device__
 inline quaternion inverse(const quaternion q)
 {
 	return make_float4(-q.x, -q.y, -q.z, q.w);

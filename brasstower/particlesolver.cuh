@@ -13,6 +13,10 @@
 #include "cuda/cudaglm.cuh"
 #include "scene.h"
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtx/quaternion.hpp>
+
 #define NUM_MAX_PARTICLE_PER_CELL 4
 #define ENERGY_LOST_RATIO 0.1f;
 
@@ -341,34 +345,143 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 									  const float3 * __restrict__ rigidBodyCM)
 {
 	// typename stuffs
-	typedef cub::BlockReduce<float3, NUM_MAX_PARTICLE_PER_RIGID_BODY> BlockReduceT;
-	__shared__ typename BlockReduceT::TempStorage TempStorageT;
+	typedef cub::BlockReduce<float3, NUM_MAX_PARTICLE_PER_RIGID_BODY> BlockReduceFloat3;
+	__shared__ typename BlockReduceFloat3::TempStorage TempStorageFloat3;
 
 	// init rigidBodyId, particleRange and numParticles
 	int rigidBodyId = blockIdx.x;
 	int2 particleRange = rigidBodyParticleIdRange[rigidBodyId];
+
 	int numParticles = particleRange.y - particleRange.x;
 	int particleId = particleRange.x + threadIdx.x;
-	if (threadIdx.x >= numParticles) return;
 
 	float3 position = positions[particleId];
+	float3 initialCM = rigidBodyCM[rigidBodyId];
 
-	// find center of mass using block reduce
-	__shared__ float3 initialCM, newCM, translate;
-	float3 CM = BlockReduceT(TempStorageT).Sum(position) / (float)numParticles;	
-	if (threadIdx.x == 0)
+	__shared__ float3 CM;
+	__shared__ matrix3 extractedR;
+
+	if (threadIdx.x < numParticles)
 	{
-		initialCM = rigidBodyCM[rigidBodyId];
-		newCM = CM;
-		translate = newCM - initialCM;
+
+		// find center of mass using block reduce
+		float3 sumCM = BlockReduceFloat3(TempStorageFloat3).Sum(position);
+
+		if (threadIdx.x == 0)
+		{
+			CM = sumCM / (float)numParticles;
+		}
 	}
 	__syncthreads();
 
-	matrix3 rotationMatrix = extract_rotation_matrix(rotations[rigidBodyId]);
+	float3 qi;
+	if (threadIdx.x < numParticles)
+	{
+		// compute A
+		float3 initialPosition = initialPositions[particleId];
+		float3 pi = position - CM;
+		qi = initialPosition - initialCM;
+		float3 AiCol0 = pi * qi.x;
+		float3 AiCol1 = pi * qi.y;
+		float3 AiCol2 = pi * qi.z;
+	#if 1
+		float3 ACol0 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol0);
+		float3 ACol1 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol1);
+		float3 ACol2 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol2);
+		/*A.col[0] = col0;
+		A.col[1] = col1;
+		A.col[2] = col2;*/
+	#else
+		A = BlockReduceMatrix3(TempStorageMatrix3).Sum(Ai);
+	#endif
+		if (threadIdx.x == 0)
+		{
+			quaternion q = rotations[rigidBodyId];
+		#if 1
+			// polar decomposition
+			matrix3 R = extract_rotation_matrix(q);
+			for (int i = 0; i < 20; i++)
+			{
+				matrix3 R = extract_rotation_matrix(q);
+				float3 omegaNumerator = cross(R.col[0], ACol0) +
+					cross(R.col[1], ACol1) +
+					cross(R.col[2], ACol2);
+				float omegaDenominator = 1.0f / fabs(dot(R.col[0], ACol0) +
+											  dot(R.col[1], ACol1) +
+											  dot(R.col[2], ACol2)) + 1e-9f;
+				float3 omega = omegaNumerator * omegaDenominator;
+				float w2 = length2(omega);
+				if (w2 <= 1e-9f) { break; }
+				float w = sqrtf(w2);
+
+				q = mul(angleAxis(omega / w, w), q);
+				q = normalize(q);
+			}
+			extractedR = extract_rotation_matrix(q);
+			/*printf("extractedR\n");
+			printf("%f %f %f\n", extractedR.col[0].x, extractedR.col[1].x, extractedR.col[2].x);
+			printf("%f %f %f\n", extractedR.col[0].y, extractedR.col[1].y, extractedR.col[2].y);
+			printf("%f %f %f\n\n", extractedR.col[0].z, extractedR.col[1].z, extractedR.col[2].z);*/
+		#elif 1
+			glm::quat glmQ(q.w, q.x, q.y, q.z);
+			glm::mat3 Aglm(ACol0.x, ACol0.y, ACol0.z,
+						   ACol1.x, ACol1.y, ACol1.z,
+						   ACol2.x, ACol2.y, ACol2.z);
+			for (int i = 0; i < 100; i++)
+			{
+				glm::mat3 R = glm::toMat3(glmQ);
+				glm::vec3 omegaNumerator = (glm::cross(R[0], Aglm[0]) +
+											glm::cross(R[1], Aglm[1]) +
+											glm::cross(R[2], Aglm[2]));
+				float omegaDenominator = 1.0f / fabs(glm::dot(R[0], Aglm[0]) +
+													 glm::dot(R[1], Aglm[1]) +
+													 glm::dot(R[2], Aglm[2])) + 1.e-9f;
+				glm::vec3 omega = omegaNumerator * omegaDenominator;
+				float w = glm::length(omega);
+				if (w < 1.e-9f) { break; }
+				glmQ = glm::angleAxis(w, (1.0f / w) * omega) * glmQ;
+				glmQ = glm::normalize(glmQ);
+			}
+
+			glm::mat3 glmRotation = glm::toMat3(glmQ);
+			for (int i = 0; i < 3; i++)
+			{
+				extractedR.col[i].x = glmRotation[i][0];
+				extractedR.col[i].y = glmRotation[i][1];
+				extractedR.col[i].z = glmRotation[i][2];
+			}
+		#else
+			glm::mat3 Aglm(ACol0.x, ACol0.y, ACol0.z,
+						   ACol1.x, ACol1.y, ACol1.z,
+						   ACol2.x, ACol2.y, ACol2.z);;
+			matrix = transpose(matrix);
+			glm::vec3 scale; glm::quat orientation; glm::vec3 translation; glm::vec3 skew; glm::vec4 perspective;
+			glm::decompose(matrix, scale, orientation, translation, skew, perspective);
+			//orientation = glm::conjugate(orientation);
+			glm::mat4 glmRotation = glm::toMat4(orientation);
+			for (int i = 0; i < 3; i++)
+			{
+				extractedR.col[i].x = glmRotation[i][0];
+				extractedR.col[i].y = glmRotation[i][1];
+				extractedR.col[i].z = glmRotation[i][2];
+			}
+
+			//extractedR = extract_rotation_matrix(make_float4(orientation.x, orientation.y, orientation.z, orientation.w));
+			printf("extractedR\n");
+			printf("%f %f %f\n", extractedR.col[0].x, extractedR.col[1].x, extractedR.col[2].x);
+			printf("%f %f %f\n", extractedR.col[0].y, extractedR.col[1].y, extractedR.col[2].y);
+			printf("%f %f %f\n\n", extractedR.col[0].z, extractedR.col[1].z, extractedR.col[2].z);
+		#endif
+			rotations[rigidBodyId] = q;
+		}
+	}
+	__syncthreads();
+
 	// compute rotation matrix
 
-	float3 initialPosition = initialPositions[particleId];
-	positions[particleId] = translate + rotationMatrix * initialPosition;
+	float3 newPosition = extractedR * qi + CM;
+	//printf("(%f %f %f) %f %f %f -> %f %f %f\n", qi.x, qi.y, qi.z, position.x, position.y, position.z, newPosition.x, newPosition.y, newPosition.z);
+	positions[particleId] = newPosition;
 }
 
 struct ParticleSolver
@@ -645,8 +758,6 @@ struct ParticleSolver
 																									  devRigidBodyInitialPositions,
 																									  devRigidBodyParticleIdRange,
 																									  devRigidBodyCM);
-					cudaDeviceSynchronize();
-					//std::swap(devTempNewPositions, devNewPositions);
 				}
 			}
 
