@@ -10,6 +10,7 @@
 #include <cuda_gl_interop.h>
 
 #include "cuda/helper.cuh"
+#include "cuda/cudamatrix.cuh"
 #include "mesh.h"
 #include "scene.h"
 
@@ -114,11 +115,17 @@ struct ParticleRenderer
 		glGenVertexArrays(1, &globalVaoHandle);
 		glBindVertexArray(globalVaoHandle);
 
-		// init ssbobuffer and register in cuda
-		glGenBuffers(1, &ssboBuffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboBuffer);
+		// init ssbobuffer for particle positions
+		glGenBuffers(1, &particlePositionsSsboBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, particlePositionsSsboBuffer);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 4 * sizeof(float) * scene->numMaxParticles, 0, GL_DYNAMIC_COPY);
-		checkCudaErrors(cudaGraphicsGLRegisterBuffer(&ssboGraphicsRes, ssboBuffer, cudaGraphicsRegisterFlagsWriteDiscard));
+		checkCudaErrors(cudaGraphicsGLRegisterBuffer(&particlePositionsSsboGraphicsRes, particlePositionsSsboBuffer, cudaGraphicsRegisterFlagsWriteDiscard));
+
+		// init ssbobuffer for transformation matrices
+		glGenBuffers(1, &rigidBodyMatricesSsboBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, rigidBodyMatricesSsboBuffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 4 * sizeof(float) * scene->numMaxParticles, 0, GL_DYNAMIC_COPY);
+		checkCudaErrors(cudaGraphicsGLRegisterBuffer(&rigidBodyMatricesSsboGraphicsRes, rigidBodyMatricesSsboBuffer, cudaGraphicsRegisterFlagsWriteDiscard));
 
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_CULL_FACE);
@@ -126,12 +133,13 @@ struct ParticleRenderer
 		glDepthFunc(GL_LEQUAL);
 
 		// load particle mesh
-		particleMesh = Mesh::Load("cube2.obj")[0];
+		particleMesh = MeshGenerator::Cube();
 		particleMesh->createOpenglBuffer();
 		planeMesh = MeshGenerator::Plane();
 		planeMesh->createOpenglBuffer();
 
 		initParticleDrawingProgram();
+		initMeshDrawingProgram();
 		initInfinitePlaneDrawingProgram();
 		initParticleColorCodeFramebuffer();
 		initParticleColorCodeProgram();
@@ -155,6 +163,26 @@ struct ParticleRenderer
 		GLuint index = glGetProgramResourceIndex(particlesDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ParticlePositions");
 		particlesDrawingProgram_ssboBinding = 0;
 		glShaderStorageBlockBinding(particlesDrawingProgram->mHandle, index, particlesDrawingProgram_ssboBinding);
+	}
+
+	std::shared_ptr<OpenglProgram> meshDrawingProgram;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uVPMatrix;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uColor;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uRigidBodyId;
+	GLuint meshDrawingProgram_ssboBinding;
+	void initMeshDrawingProgram()
+	{
+		meshDrawingProgram = std::make_shared<OpenglProgram>();
+		meshDrawingProgram->attachVertexShader(OpenglVertexShader::CreateFromFile("glshaders/mesh.vert"));
+		meshDrawingProgram->attachFragmentShader(OpenglFragmentShader::CreateFromFile("glshaders/mesh.frag"));
+		meshDrawingProgram->compile();
+
+		meshDrawingProgram_uVPMatrix = meshDrawingProgram->registerUniform("uVPMatrix");
+		meshDrawingProgram_uColor = meshDrawingProgram->registerUniform("uColor");
+		meshDrawingProgram_uRigidBodyId = meshDrawingProgram->registerUniform("uRigidBodyId");
+		GLuint index = glGetProgramResourceIndex(meshDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ModelMatrices");
+		meshDrawingProgram_ssboBinding = 0;
+		glShaderStorageBlockBinding(meshDrawingProgram->mHandle, index, meshDrawingProgram_ssboBinding);
 	}
 
 	std::shared_ptr<OpenglProgram> planeDrawingProgram;
@@ -229,7 +257,7 @@ struct ParticleRenderer
 			particlesColorCodeProgram_uMVPMatrix->setMat4(cameraVpMatrix);
 			particlesColorCodeProgram_uRadius->setFloat(scene->radius);
 			particlesColorCodeProgram_uCameraPosition->setVec3(camera.pos);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, ssboBuffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, particlePositionsSsboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
 			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
 			glDisableVertexAttribArray(0);
@@ -259,9 +287,26 @@ struct ParticleRenderer
 			particlesDrawingProgram_uMVPMatrix->setMat4(cameraVpMatrix);
 			particlesDrawingProgram_uRadius->setFloat(scene->radius);
 			particlesDrawingProgram_uCameraPosition->setVec3(camera.pos);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, ssboBuffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, particlePositionsSsboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
 			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
+			glDisableVertexAttribArray(0);
+		}
+
+		// render rigidbody meshes
+		{
+			glUseProgram(meshDrawingProgram->mHandle);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, meshDrawingProgram_ssboBinding, rigidBodyMatricesSsboBuffer);
+			glEnableVertexAttribArray(0);
+			for (int i = 0; i < scene->numRigidBodies; i++)
+			{
+				glBindBuffer(GL_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mVerticesBuffer->mHandle);
+				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mIndicesBuffer->mHandle);
+				meshDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
+				meshDrawingProgram_uRigidBodyId->setInt(i);
+				glDrawElements(GL_TRIANGLES, scene->rigidBodies[i]->mesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
+			}
 			glDisableVertexAttribArray(0);
 		}
 
@@ -283,29 +328,44 @@ struct ParticleRenderer
 		}
 	}
 
-	float4* mapSsbo()
+	float4* mapParticlePositionsSsbo()
 	{
 		float4 *dptr;
-		checkCudaErrors(cudaGraphicsMapResources(1, &ssboGraphicsRes, 0));
+		checkCudaErrors(cudaGraphicsMapResources(1, &particlePositionsSsboGraphicsRes, 0));
 		size_t numBytes;
-		checkCudaErrors(cudaGraphicsResourceGetMappedPointer((void **)&dptr, &numBytes, ssboGraphicsRes));
+		checkCudaErrors(cudaGraphicsResourceGetMappedPointer((void **)&dptr, &numBytes, particlePositionsSsboGraphicsRes));
 		return dptr;
 	}
 
-	void unmapSsbo()
+	void unmapParticlePositionsSsbo()
 	{
-		checkCudaErrors(cudaGraphicsUnmapResources(1, &ssboGraphicsRes, 0));
+		checkCudaErrors(cudaGraphicsUnmapResources(1, &particlePositionsSsboGraphicsRes, 0));
 	}
 
-	std::shared_ptr<Mesh> particleMesh;
-	std::shared_ptr<Mesh> planeMesh;
+	matrix4* mapMatricesSsbo()
+	{
+		matrix4 *dptr;
+		checkCudaErrors(cudaGraphicsMapResources(1, &rigidBodyMatricesSsboGraphicsRes, 0));
+		size_t numBytes;
+		checkCudaErrors(cudaGraphicsResourceGetMappedPointer((void **)&dptr, &numBytes, rigidBodyMatricesSsboGraphicsRes));
+		return dptr;
+	}
 
-	const std::shared_ptr<Scene> scene;
-	const glm::uvec2 resolution;
-	Camera camera;
-	GLuint ssboBuffer;
-	cudaGraphicsResource_t ssboGraphicsRes;
+	void unmapMatricesSsbo()
+	{
+		checkCudaErrors(cudaGraphicsUnmapResources(1, &rigidBodyMatricesSsboGraphicsRes, 0));
+	}
 
+	std::shared_ptr<Mesh>			particleMesh;
+	std::shared_ptr<Mesh>			planeMesh;
+
+	const std::shared_ptr<Scene>	scene;
+	const glm::uvec2				resolution;
+	Camera							camera;
+	GLuint							particlePositionsSsboBuffer;
+	cudaGraphicsResource_t			particlePositionsSsboGraphicsRes;
+	GLuint							rigidBodyMatricesSsboBuffer;
+	cudaGraphicsResource_t			rigidBodyMatricesSsboGraphicsRes;
 private:
 	GLuint globalVaoHandle;
 };

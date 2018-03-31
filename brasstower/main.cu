@@ -1,6 +1,7 @@
-//#include "kernel.cuh"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
@@ -134,6 +135,10 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->numRigidBodies = 0;
 	scene->numMaxRigidBodies = 128;
 	scene->radius = 0.05f;
+
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 1, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
+
 	return scene;
 }
 
@@ -144,6 +149,15 @@ __global__ void mapPositions(float4 * ssboDptr, float3 * position, const int num
 	ssboDptr[i] = make_float4(position[i].x, position[i].y, position[i].z, 0.0f);
 }
 
+__global__ void mapMatrices(matrix4 * matrices, quaternion * quaternions, float3 * CMs, const int numRigidBodies)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numRigidBodies) { return; }
+	float3 CM = CMs[i];
+	matrices[i] = extract_rotation_matrix4(quaternions[i]);
+	matrices[i].col[3] = make_float4(CM.x, CM.y, CM.z, 1.0f);
+}
+
 int main()
 {
 	cudaGLSetGLDevice(0);
@@ -152,7 +166,7 @@ int main()
 	std::shared_ptr<Scene> scene = initSimpleScene();
 	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
 	solver = new ParticleSolver(scene);
-	solver->addRigidBody(CreateBoxParticles(glm::ivec3(4, 3, 2), glm::vec3(0 - scene->radius, scene->radius, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)), 1.0f);
+	//solver->addRigidBody(particles, particles, 1.0f);
 	//solver->addParticles(glm::ivec3(1, 1, 1), glm::vec3(0, 1.5, 0), glm::vec3(scene->radius * 2.0f), 1.0f);
 	//solver->addParticles(glm::ivec3(3, 5, 1), glm::vec3(0 - scene->radius, scene->radius, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.0f);
 
@@ -178,11 +192,26 @@ int main()
 		}
 
 		// renderer update
-		float4 *dptr = renderer->mapSsbo();
-		int numBlocks, numThreads;
-		GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
-		mapPositions<<<numBlocks, numThreads>>>(dptr, solver->devPositions, scene->numParticles);
-		renderer->unmapSsbo();
+		{
+			// for particles
+			float4 *dptr = renderer->mapParticlePositionsSsbo();
+			int numBlocks, numThreads;
+			GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
+			mapPositions<<<numBlocks, numThreads>>>(dptr,
+													solver->devPositions,
+													scene->numParticles);
+			renderer->unmapParticlePositionsSsbo();
+		}
+		{
+			matrix4 *dptr = renderer->mapMatricesSsbo();
+			int numBlocks, numThreads;
+			GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numRigidBodies);
+			mapMatrices<<<numBlocks, numThreads>>>(dptr,
+												   solver->devRigidBodyRotations,
+												   solver->devRigidBodyCMs,
+												   scene->numRigidBodies);
+			renderer->unmapMatricesSsbo();
+		}
 		renderer->update();
 
 		// Swap buffers

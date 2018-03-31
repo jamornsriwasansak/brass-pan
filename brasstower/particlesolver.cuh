@@ -340,10 +340,10 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 // one block per one shape
 #define NUM_MAX_PARTICLE_PER_RIGID_BODY 64
 __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
+									  float3 * __restrict__ CMs,
 									  float3 * __restrict__ positions,
 									  const float3 * __restrict__ initialPositions,
-									  const int2 * __restrict__ rigidBodyParticleIdRange,
-									  const float3 * __restrict__ rigidBodyCM)
+									  const int2 * __restrict__ rigidBodyParticleIdRange)
 {
 	// typename stuffs
 	typedef cub::BlockReduce<float3, NUM_MAX_PARTICLE_PER_RIGID_BODY> BlockReduceFloat3;
@@ -357,7 +357,6 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	int particleId = particleRange.x + threadIdx.x;
 
 	float3 position = positions[particleId];
-	float3 initialCM = rigidBodyCM[rigidBodyId];
 
 	__shared__ float3 CM;
 	__shared__ matrix3 extractedR;
@@ -370,6 +369,7 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 		if (threadIdx.x == 0)
 		{
 			CM = sumCM / (float)numParticles;
+			CMs[rigidBodyId] = CM;
 		}
 	}
 	__syncthreads();
@@ -380,7 +380,7 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 		// compute matrix Apq
 		float3 initialPosition = initialPositions[particleId];
 		float3 pi = position - CM;
-		qi = initialPosition - initialCM;
+		qi = initialPosition;// do not needed to subtract from initialCM since initialCM = float3(0);
 
 		// Matrix Ai refers to p * q
 		float3 AiCol0 = pi * qi.x;
@@ -399,10 +399,10 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 			// by Muller et al.
 
 			quaternion q = rotations[rigidBodyId];
-			matrix3 R = extract_rotation_matrix(q);
+			matrix3 R = extract_rotation_matrix3(q);
 			for (int i = 0; i < 20; i++)
 			{
-				matrix3 R = extract_rotation_matrix(q);
+				matrix3 R = extract_rotation_matrix3(q);
 				float3 omegaNumerator = (cross(R.col[0], ACol0) +
 										 cross(R.col[1], ACol1) +
 										 cross(R.col[2], ACol2));
@@ -417,14 +417,18 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 				q = mul(angleAxis(omega / w, w), q);
 				q = normalize(q);
 			}
-			extractedR = extract_rotation_matrix(q);
+			extractedR = extract_rotation_matrix3(q);
 			rotations[rigidBodyId] = q;
 		}
 	}
 	__syncthreads();
 
-	float3 newPosition = extractedR * qi + CM;
-	positions[particleId] = newPosition;
+	if (threadIdx.x < numParticles)
+	{
+		float3 newPosition = extractedR * qi + CM;
+		//float3 newPosition = qi + CM;
+		positions[particleId] = newPosition;
+	}
 }
 
 struct ParticleSolver
@@ -446,7 +450,7 @@ struct ParticleSolver
 
 		// alloc rigid body
 		checkCudaErrors(cudaMalloc(&devRigidBodyParticleIdRange, scene->numMaxRigidBodies * sizeof(int2)));
-		checkCudaErrors(cudaMalloc(&devRigidBodyCM, scene->numMaxRigidBodies * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devRigidBodyCMs, scene->numMaxRigidBodies * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devRigidBodyInitialPositions, scene->numMaxRigidBodies * NUM_MAX_PARTICLE_PER_RIGID_BODY * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devRigidBodyRotations, scene->numMaxRigidBodies * sizeof(quaternion)));
 		int numBlocksRigidBody, numThreadsRigidBody;
@@ -465,6 +469,12 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devCellStart, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
 
 		checkCudaErrors(cudaMemset(devVelocities, 0, scene->numMaxParticles * sizeof(float3)));
+
+		// start initing the scene
+		for (std::shared_ptr<RigidBody> rigidBody : scene->rigidBodies)
+		{
+			addRigidBody(rigidBody->positions, rigidBody->positions_CM_Origin, 1.0f);
+		}
 	}
 
 	void updateTempStorageSize(const size_t size)
@@ -528,7 +538,7 @@ struct ParticleSolver
 		isNotRigidParticlesAdded = true;
 	}
 
-	void addRigidBody(const std::vector<glm::vec3> initialPositions, const float massPerParticle)
+	void addRigidBody(const std::vector<glm::vec3> & initialPositions, const std::vector<glm::vec3> & initialPositions_CM_Origin, const float massPerParticle)
 	{
 		int numParticles = initialPositions.size();
 		if (isNotRigidParticlesAdded)
@@ -550,8 +560,14 @@ struct ParticleSolver
 		}
 
 		glm::vec3 cm = glm::vec3(0.0f);
-		for (const glm::vec3 & position : initialPositions) { cm += position; }
-		cm /= (float)initialPositions.size();
+		for (const glm::vec3 & position : initialPositions_CM_Origin) { cm += position; }
+		cm /= (float)initialPositions_CM_Origin.size();
+
+		if (glm::length(cm) >= 1e-5f)
+		{
+			std::string message = std::string(__FILE__) + std::string("expected Center of Mass at the origin");
+			throw std::exception(message.c_str());
+		}
 
 		// set positions
 		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
@@ -559,7 +575,7 @@ struct ParticleSolver
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
 		checkCudaErrors(cudaMemcpy(devRigidBodyInitialPositions + scene->numParticles,
-								   &(initialPositions[0].x),
+								   &(initialPositions_CM_Origin[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
 		int numBlocks, numThreads;
@@ -577,9 +593,6 @@ struct ParticleSolver
 		setDevArr_int2<<<1, 1>>>(devRigidBodyParticleIdRange + scene->numRigidBodies,
 								 make_int2(scene->numParticles, scene->numParticles + numParticles),
 								 1);
-		// set center of mass
-		setDevArr_float3<<<1, 1>>>(devRigidBodyCM + scene->numRigidBodies,
-								   make_float3(cm.x, cm.y, cm.z), 1);
 		// increment phase counter
 		increment<<<1, 1>>>(devPhaseCounter);
 		
@@ -697,10 +710,10 @@ struct ParticleSolver
 					std::swap(devTempNewPositions, devNewPositions);
 					// solve all rigidbody constraints
 					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
+																									  devRigidBodyCMs,
 																									  devNewPositions,
 																									  devRigidBodyInitialPositions,
-																									  devRigidBodyParticleIdRange,
-																									  devRigidBodyCM);
+																									  devRigidBodyParticleIdRange);
 				}
 			}
 
@@ -736,8 +749,8 @@ struct ParticleSolver
 
 	int2 *		devRigidBodyParticleIdRange;
 	float3 *	devRigidBodyInitialPositions;
-	float3 *	devRigidBodyCM; // center of mass
 	quaternion * devRigidBodyRotations;
+	float3 *	devRigidBodyCMs;// center of mass
 
 	void *		devTempStorage = nullptr;
 	size_t		devTempStorageSize = 0;

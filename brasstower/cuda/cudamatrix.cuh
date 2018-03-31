@@ -37,7 +37,7 @@ inline float dot3(const float4 & a, const float4 & b)
 }
 
 /*****************************************
-Matrix3x4
+Matrix3
 /*****************************************/
 typedef struct
 {
@@ -95,6 +95,15 @@ inline float3 operator*(const matrix3 & m, const float3 & a)
 }
 
 /*****************************************
+Matrix3
+/*****************************************/
+
+typedef struct
+{
+	float4 col[4];
+} matrix4;
+
+/*****************************************
 Quaternion
 /*****************************************/
 
@@ -142,22 +151,51 @@ inline float4 rotate(const quaternion q, const float4 vec)
 }
 
 __host__ __device__
-inline matrix3 extract_rotation_matrix(quaternion quat)
+inline matrix3 extract_rotation_matrix3(quaternion quat)
 {
 	float4 quat2 = quat * quat;
 	matrix3 out;
 
 	out.col[0].x = 1 - 2 * quat2.y - 2 * quat2.z;
-	out.col[1].x = 2 * quat.x*quat.y - 2 * quat.w*quat.z;
-	out.col[2].x = 2 * quat.x*quat.z + 2 * quat.w*quat.y;
-
 	out.col[0].y = 2 * quat.x*quat.y + 2 * quat.w*quat.z;
-	out.col[1].y = 1 - 2 * quat2.x - 2 * quat2.z;
-	out.col[2].y = 2 * quat.y*quat.z - 2 * quat.w*quat.x;
-
 	out.col[0].z = 2 * quat.x*quat.z - 2 * quat.w*quat.y;
+
+	out.col[1].x = 2 * quat.x*quat.y - 2 * quat.w*quat.z;
+	out.col[1].y = 1 - 2 * quat2.x - 2 * quat2.z;
 	out.col[1].z = 2 * quat.y*quat.z + 2 * quat.w*quat.x;
+
+	out.col[2].x = 2 * quat.x*quat.z + 2 * quat.w*quat.y;
+	out.col[2].y = 2 * quat.y*quat.z - 2 * quat.w*quat.x;
 	out.col[2].z = 1 - 2 * quat2.x - 2 * quat2.y;
+
+	return out;
+}
+
+__host__ __device__
+inline matrix4 extract_rotation_matrix4(quaternion quat)
+{
+	float4 quat2 = quat * quat;
+	matrix4 out;
+
+	out.col[0].x = 1 - 2 * quat2.y - 2 * quat2.z;
+	out.col[0].y = 2 * quat.x*quat.y + 2 * quat.w*quat.z;
+	out.col[0].z = 2 * quat.x*quat.z - 2 * quat.w*quat.y;
+	out.col[0].w = 0;
+
+	out.col[1].x = 2 * quat.x*quat.y - 2 * quat.w*quat.z;
+	out.col[1].y = 1 - 2 * quat2.x - 2 * quat2.z;
+	out.col[1].z = 2 * quat.y*quat.z + 2 * quat.w*quat.x;
+	out.col[1].w = 0;
+
+	out.col[2].x = 2 * quat.x*quat.z + 2 * quat.w*quat.y;
+	out.col[2].y = 2 * quat.y*quat.z - 2 * quat.w*quat.x;
+	out.col[2].z = 1 - 2 * quat2.x - 2 * quat2.y;
+	out.col[2].w = 0;
+
+	out.col[3].x = 0;
+	out.col[3].y = 0;
+	out.col[3].z = 0;
+	out.col[3].w = 1;
 
 	return out;
 }
