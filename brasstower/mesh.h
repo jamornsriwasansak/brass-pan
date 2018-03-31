@@ -144,20 +144,20 @@ struct Mesh
 
 struct MeshGenerator
 {
-	static std::shared_ptr<Mesh> Box()
+	static std::shared_ptr<Mesh> Cube()
 	{
 		std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
 		const float vertices[] = { 1.0f,-1.0f,-1.0f,1.0f,-1.0f,1.0f,-1.0f,-1.0f,1.0f,-1.0f,-1.0f,-1.0f,1.0f,1.0f,-1.0f,1.0f,1.0f,1.0f,-1.0f,1.0f,1.0f,-1.0f,1.0f,-1.0f };
 		const float texcoords[] = { 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f };
 		const float normals[] = { 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f };
-		const int32_t indices[] = { 0,3,0,7,5,4,4,1,0,5,2,1,2,7,3,0,7,4,1,2,3,7,6,5,4,5,1,5,6,2,2,6,7,0,3,7 };
+		const int32_t indices[] = { 1,3,0,7,5,4,4,1,0,5,2,1,2,7,3,0,7,4,1,2,3,7,6,5,4,5,1,5,6,2,2,6,7,0,3,7 };
 		mesh->mNumVertices = 8;
 		mesh->mNumTriangles = 12;
 		mesh->mVertices = std::vector<float>(vertices, vertices + sizeof(vertices) / sizeof(vertices[0]));
 		mesh->mNormals = std::vector<float>(normals, normals + sizeof(normals) / sizeof(normals[0]));
 		mesh->mTexCoords = std::vector<float>(texcoords, texcoords + sizeof(texcoords) / sizeof(texcoords[0]));
 		mesh->mTriIndices = std::vector<int32_t>(indices, indices + sizeof(indices) / sizeof(indices[0]));
-		return nullptr;
+		return mesh;
 	}
 
 	static std::shared_ptr<Mesh> Plane()
