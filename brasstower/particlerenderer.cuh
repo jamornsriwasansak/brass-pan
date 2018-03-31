@@ -124,8 +124,10 @@ struct ParticleRenderer
 		glDepthFunc(GL_LEQUAL);
 
 		// load particle mesh
-		particleMesh = Mesh::Load("cube.objj")[0];
-		planeMesh = Mesh::Load("plane.objj")[0];
+		particleMesh = Mesh::Load("cube2.obj")[0];
+		particleMesh->createOpenglBuffer();
+		planeMesh = MeshGenerator::Plane();
+		planeMesh->createOpenglBuffer();
 
 		initParticleDrawingProgram();
 		initInfinitePlaneDrawingProgram();
