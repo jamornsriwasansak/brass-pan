@@ -169,17 +169,26 @@ struct ParticleRenderer
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uVPMatrix;
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uColor;
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uRigidBodyId;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightPosition;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightDir;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightIntensity;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightExponent;
 	GLuint meshDrawingProgram_ssboBinding;
 	void initMeshDrawingProgram()
 	{
 		meshDrawingProgram = std::make_shared<OpenglProgram>();
 		meshDrawingProgram->attachVertexShader(OpenglVertexShader::CreateFromFile("glshaders/mesh.vert"));
+		meshDrawingProgram->attachGeometryShader(OpenglGeometryShader::CreateFromFile("glshaders/mesh.geom"));
 		meshDrawingProgram->attachFragmentShader(OpenglFragmentShader::CreateFromFile("glshaders/mesh.frag"));
 		meshDrawingProgram->compile();
 
 		meshDrawingProgram_uVPMatrix = meshDrawingProgram->registerUniform("uVPMatrix");
 		meshDrawingProgram_uColor = meshDrawingProgram->registerUniform("uColor");
 		meshDrawingProgram_uRigidBodyId = meshDrawingProgram->registerUniform("uRigidBodyId");
+		meshDrawingProgram_uLightPosition = meshDrawingProgram->registerUniform("uLightPosition");
+		meshDrawingProgram_uLightDir = meshDrawingProgram->registerUniform("uLightDir");
+		meshDrawingProgram_uLightIntensity = meshDrawingProgram->registerUniform("uLightIntensity");
+		meshDrawingProgram_uLightExponent = meshDrawingProgram->registerUniform("uLightExponent");
 		GLuint index = glGetProgramResourceIndex(meshDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ModelMatrices");
 		meshDrawingProgram_ssboBinding = 0;
 		glShaderStorageBlockBinding(meshDrawingProgram->mHandle, index, meshDrawingProgram_ssboBinding);
@@ -278,6 +287,7 @@ struct ParticleRenderer
 
 		glm::mat4 cameraVpMatrix = camera.vpMatrix();
 
+		/*
 		// render particles
 		{
 			glUseProgram(particlesDrawingProgram->mHandle);
@@ -292,19 +302,25 @@ struct ParticleRenderer
 			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
 			glDisableVertexAttribArray(0);
 		}
+		*/
 
 		// render rigidbody meshes
 		{
 			glUseProgram(meshDrawingProgram->mHandle);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, meshDrawingProgram_ssboBinding, rigidBodyMatricesSsboBuffer);
 			glEnableVertexAttribArray(0);
+			meshDrawingProgram_uLightPosition->setVec3(scene->pointLight.position);
+			meshDrawingProgram_uLightDir->setVec3(scene->pointLight.direction);
+			meshDrawingProgram_uLightExponent->setFloat(scene->pointLight.exponent);
+			meshDrawingProgram_uLightIntensity->setVec3(scene->pointLight.intensity);
+			meshDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
 			for (int i = 0; i < scene->numRigidBodies; i++)
 			{
 				glBindBuffer(GL_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mVerticesBuffer->mHandle);
 				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mIndicesBuffer->mHandle);
-				meshDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
 				meshDrawingProgram_uRigidBodyId->setInt(i);
+				meshDrawingProgram_uColor->setVec3(scene->rigidBodies[i]->color);
 				glDrawElements(GL_TRIANGLES, scene->rigidBodies[i]->mesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
 			}
 			glDisableVertexAttribArray(0);

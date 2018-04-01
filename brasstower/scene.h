@@ -40,12 +40,15 @@ struct RigidBody
 	std::vector<glm::vec3> positions;
 	std::vector<glm::vec3> positions_CM_Origin; // recomputed positions where all CM are placed at origin
 	glm::vec3 CM; // center of mass
+	glm::vec3 color;
 
-	static std::shared_ptr<RigidBody> CreateRigidBox(const glm::ivec3 & dimension,
+	static std::shared_ptr<RigidBody> CreateRigidBox(const glm::vec3 & color,
+													 const glm::ivec3 & dimension,
 													 const glm::vec3 & startPosition,
 													 const glm::vec3 & stepSize)
 	{
 		std::shared_ptr<RigidBody> result = std::make_shared<RigidBody>();
+		result->color = color;
 
 		std::vector<glm::vec3> & positions = result->positions;
 		glm::vec3 CM = glm::vec3(0.0f);
@@ -78,11 +81,21 @@ struct RigidBody
 	}
 };
 
+struct PointLight
+{
+	glm::vec3 position;
+	glm::vec3 direction;
+	glm::vec3 intensity;
+	float exponent;
+};
+
 struct Scene
 {
 	std::vector<Plane> planes;
 	std::vector<std::shared_ptr<RigidBody>> rigidBodies;
-	std::vector<std::shared_ptr<glm::vec3>> granulars; // position of solid particles (without any constraints)
+	std::vector<glm::vec3> granulars; // position of solid particles (without any constraints)
+
+	PointLight pointLight;
 
 	/// THESE ARE PARTICLE SYSTEM PARAMETERS! don't touch!
 	/// TODO:: move these to particle system

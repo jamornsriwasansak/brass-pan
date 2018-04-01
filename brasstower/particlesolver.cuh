@@ -475,6 +475,11 @@ struct ParticleSolver
 		{
 			addRigidBody(rigidBody->positions, rigidBody->positions_CM_Origin, 1.0f);
 		}
+
+		for (const glm::vec3 & particlePos : scene->granulars)
+		{
+			addParticles(glm::vec3(1, 1, 1), particlePos, glm::vec3(0), 1.0f);
+		}
 	}
 
 	void updateTempStorageSize(const size_t size)
@@ -541,12 +546,6 @@ struct ParticleSolver
 	void addRigidBody(const std::vector<glm::vec3> & initialPositions, const std::vector<glm::vec3> & initialPositions_CM_Origin, const float massPerParticle)
 	{
 		int numParticles = initialPositions.size();
-		if (isNotRigidParticlesAdded)
-		{
-			std::string message = std::string(__FILE__) + std::string("can't rigid particles after different particles type");
-			throw std::exception(message.c_str());
-		}
-
 		if (scene->numParticles + numParticles >= scene->numMaxParticles)
 		{
 			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
