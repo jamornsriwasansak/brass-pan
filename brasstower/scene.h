@@ -83,6 +83,13 @@ struct RigidBody
 
 struct PointLight
 {
+	glm::mat4 shadowMatrix()
+	{
+		glm::mat4 projMatrix = glm::perspective(glm::radians(70.0f), 1.0f, 0.05f, 100.0f);
+		glm::mat4 viewMatrix = glm::lookAt(position, position + direction, glm::vec3(0, 1, 0));
+		return projMatrix * viewMatrix;
+	}
+
 	glm::vec3 position;
 	glm::vec3 direction;
 	glm::vec3 intensity;

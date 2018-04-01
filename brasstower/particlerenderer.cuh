@@ -140,6 +140,7 @@ struct ParticleRenderer
 
 		initParticleDrawingProgram();
 		initMeshDrawingProgram();
+		initMeshShadowProgram();
 		initInfinitePlaneDrawingProgram();
 		initParticleColorCodeFramebuffer();
 		initParticleColorCodeProgram();
@@ -173,6 +174,8 @@ struct ParticleRenderer
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightDir;
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightIntensity;
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightExponent;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uShadowMatrix;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uShadowMap;
 	GLuint meshDrawingProgram_ssboBinding;
 	void initMeshDrawingProgram()
 	{
@@ -189,6 +192,8 @@ struct ParticleRenderer
 		meshDrawingProgram_uLightDir = meshDrawingProgram->registerUniform("uLightDir");
 		meshDrawingProgram_uLightIntensity = meshDrawingProgram->registerUniform("uLightIntensity");
 		meshDrawingProgram_uLightExponent = meshDrawingProgram->registerUniform("uLightExponent");
+		meshDrawingProgram_uShadowMatrix = meshDrawingProgram->registerUniform("uShadowMatrix");
+		meshDrawingProgram_uShadowMap = meshDrawingProgram->registerUniform("uShadowMap");
 		GLuint index = glGetProgramResourceIndex(meshDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ModelMatrices");
 		meshDrawingProgram_ssboBinding = 0;
 		glShaderStorageBlockBinding(meshDrawingProgram->mHandle, index, meshDrawingProgram_ssboBinding);
@@ -210,6 +215,44 @@ struct ParticleRenderer
 		planeDrawingProgram_uCameraPosition = planeDrawingProgram->registerUniform("uCameraPos");
 	}
 
+	GLuint meshShadowFramebufferHandle;
+	GLuint meshShadowDepthTextureHandle;
+	std::shared_ptr<OpenglProgram> meshShadowProgram;
+	std::shared_ptr<OpenglUniform> meshShadowProgram_uShadowMatrix;
+	std::shared_ptr<OpenglUniform> meshShadowProgram_uRigidBodyId;
+	GLuint meshShadowProgram_ssboBinding;
+	void initMeshShadowProgram()
+	{
+		glGenFramebuffers(1, &meshShadowFramebufferHandle);
+		glBindFramebuffer(GL_FRAMEBUFFER, meshShadowFramebufferHandle);
+
+		glGenTextures(1, &meshShadowDepthTextureHandle);
+		glBindTexture(GL_TEXTURE_2D, meshShadowDepthTextureHandle);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, 1024, 1024, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, meshShadowDepthTextureHandle, 0);
+		glDrawBuffer(GL_NONE);
+
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			throw std::exception("framebuffer error");
+
+		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
+
+		meshShadowProgram = std::make_shared<OpenglProgram>();
+		meshShadowProgram->attachVertexShader(OpenglVertexShader::CreateFromFile("glshaders/meshshadow.vert"));
+		meshShadowProgram->attachFragmentShader(OpenglFragmentShader::CreateFromFile("glshaders/meshshadow.frag"));
+		meshShadowProgram->compile();
+
+		meshShadowProgram_uRigidBodyId = meshShadowProgram->registerUniform("uRigidBodyId");
+		meshShadowProgram_uShadowMatrix = meshShadowProgram->registerUniform("uShadowMatrix");
+		GLuint index = glGetProgramResourceIndex(meshShadowProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ModelMatrices");
+		meshShadowProgram_ssboBinding = 0;
+		glShaderStorageBlockBinding(meshShadowProgram->mHandle, index, meshShadowProgram_ssboBinding);
+	}
+
 	GLuint particlesColorCodeFramebufferHandle;
 	GLuint particlesColorCodeTextureHandle;
 	void initParticleColorCodeFramebuffer()
@@ -225,6 +268,10 @@ struct ParticleRenderer
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, resolution.x, resolution.y, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, particlesColorCodeTextureHandle, 0);
+
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			throw std::exception("framebuffer error");
+
 		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
 	}
 
@@ -283,10 +330,6 @@ struct ParticleRenderer
 
 	void update()
 	{
-		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-
-		glm::mat4 cameraVpMatrix = camera.vpMatrix();
-
 		/*
 		// render particles
 		{
@@ -304,6 +347,29 @@ struct ParticleRenderer
 		}
 		*/
 
+		glBindFramebuffer(GL_FRAMEBUFFER, meshShadowFramebufferHandle);
+		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+		glm::mat4 shadowMatrix = scene->pointLight.shadowMatrix();
+		// render shadow map
+		{
+			glUseProgram(meshShadowProgram->mHandle);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, meshShadowProgram_ssboBinding, rigidBodyMatricesSsboBuffer);
+			glEnableVertexAttribArray(0);
+			meshShadowProgram_uShadowMatrix->setMat4(shadowMatrix);
+			for (int i = 0; i < scene->numRigidBodies; i++)
+			{
+				glBindBuffer(GL_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mVerticesBuffer->mHandle);
+				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mIndicesBuffer->mHandle);
+				meshShadowProgram_uRigidBodyId->setInt(i);
+				glDrawElements(GL_TRIANGLES, scene->rigidBodies[i]->mesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
+			}
+			glDisableVertexAttribArray(0);
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
+		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+		glm::mat4 cameraVpMatrix = camera.vpMatrix();
 		// render rigidbody meshes
 		{
 			glUseProgram(meshDrawingProgram->mHandle);
@@ -314,6 +380,12 @@ struct ParticleRenderer
 			meshDrawingProgram_uLightExponent->setFloat(scene->pointLight.exponent);
 			meshDrawingProgram_uLightIntensity->setVec3(scene->pointLight.intensity);
 			meshDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
+			meshDrawingProgram_uShadowMatrix->setMat4(shadowMatrix);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, meshShadowDepthTextureHandle);
+			meshDrawingProgram_uShadowMap->setInt(0);
+
 			for (int i = 0; i < scene->numRigidBodies; i++)
 			{
 				glBindBuffer(GL_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mVerticesBuffer->mHandle);
@@ -326,6 +398,7 @@ struct ParticleRenderer
 			glDisableVertexAttribArray(0);
 		}
 
+		/*
 		// render plane
 		{
 			glUseProgram(planeDrawingProgram->mHandle);
@@ -342,6 +415,7 @@ struct ParticleRenderer
 			}
 			glDisableVertexAttribArray(0);
 		}
+		*/
 	}
 
 	float4* mapParticlePositionsSsbo()
