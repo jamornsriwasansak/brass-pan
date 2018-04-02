@@ -348,6 +348,7 @@ struct ParticleRenderer
 		*/
 
 		glBindFramebuffer(GL_FRAMEBUFFER, meshShadowFramebufferHandle);
+		glViewport(0, 0, 1024, 1024);
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		glm::mat4 shadowMatrix = scene->pointLight.shadowMatrix();
 		// render shadow map
@@ -368,6 +369,7 @@ struct ParticleRenderer
 		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
+		glViewport(0, 0, 1280, 720);
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		glm::mat4 cameraVpMatrix = camera.vpMatrix();
 		// render rigidbody meshes
