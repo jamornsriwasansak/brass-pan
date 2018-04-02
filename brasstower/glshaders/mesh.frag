@@ -9,8 +9,8 @@ uniform float uLightExponent;
 
 uniform vec3 uColor;
 
+//uniform sampler2D uShadowMap;
 uniform sampler2D uShadowMap;
-//uniform sampler2DShadow uShadowMap;
 
 in vec3 gNormal;
 in vec3 gPosition;
@@ -25,7 +25,7 @@ vec3 light()
 	return uLightIntensity * unnormCos1 * unnormCos2 / (dist2 * dist2);
 }
 
-float visibility()
+/*float visibility()
 {
 	//float v = texture(uShadowMap, vec3(gShadowCoord.xy, gShadowCoord.z / gShadowCoord.w));
 	vec3 projShadowCoord = gShadowCoord.xyz / gShadowCoord.w;
@@ -36,14 +36,34 @@ float visibility()
 	}
 	return 1.0f;
 	//return v;
+}*/
+
+float visibility()
+{
+	vec3 projShadowCoord = gShadowCoord.xyz / gShadowCoord.w;
+	//return texture(uShadowMap, projShadowCoord.xy).r;
+	/*if (projShadowCoord.z > texture(uShadowMap, projShadowCoord.xy).r)
+	{
+		return 1.0f;
+	}
+	return 0.0f;*/
+	//return 1.0f - (texture(uShadowMap, projShadowCoord.xy * 0.5f + 0.5f).r - projShadowCoord.z);
+	//return texture(uShadowMap, projShadowCoord.xy * 0.5f + 0.5f).r / 5.0f;
+	return max(texture(uShadowMap, projShadowCoord.xy * 0.5f + 0.5f).z - projShadowCoord.z, 0.0f) * 100.0f;
 }
 
 void main()
 {
-	vec3 ambient = uColor * 0.5f;
+	//vec3 ambient = uColor * 0.5f;
 	//color = vec4(visibility() * light() * uColor + ambient, 1.0f);
+	color = vec4(visibility() + vec3(0.1f), 1.0f);
 	//color = vec4(vec3(visibility()), 1.0f);
-	vec3 projShadowCoord = gShadowCoord.xyz / gShadowCoord.w;
-	projShadowCoord = projShadowCoord * 0.5f + 0.5f;
-	color = vec4(texture(uShadowMap, projShadowCoord.xy).r);
+
+	//color = vec4(vec3(texture(uShadowMap, projShadowCoord).r), 1.0f);
+	//color = vec4(projShadowCoord.xy, 0.0f, 1.0f);
+
+	//vec2 coord = gl_FragCoord.xy / vec2(1280, 720);
+	//float r = texture(uShadowMap, coord).r;
+
+	//color = vec4(vec3(r), 1.0f);
 }

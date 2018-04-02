@@ -3,7 +3,10 @@
 layout(location = 0) out vec4 color;
 
 in vec4 vPosition;
+in vec4 vShadowCoord;
+
 uniform vec3 uCameraPos;
+uniform sampler2D uShadowMap;
 
 void main()
 {
@@ -19,5 +22,8 @@ void main()
 	float dist2 = dot(diffPos, diffPos);
 	float attenuation = min(400.0 / dist2, 1.0f);
 
-	color = vec4(diffuseReflectance, 1.0f) * attenuation;
+	vec3 projShadowCoord = vShadowCoord.xyz / vShadowCoord.w;
+	vec3 shadowColor = texture(uShadowMap, projShadowCoord.xy * 0.5f + 0.5f).xyz;
+
+	color = vec4(diffuseReflectance * attenuation * vec3(1.0f - shadowColor.z), 1.0f);
 }

@@ -203,6 +203,8 @@ struct ParticleRenderer
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uVPMatrix;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uModelMatrix;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uCameraPosition;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uShadowMatrix;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uShadowMap;
 	void initInfinitePlaneDrawingProgram()
 	{
 		planeDrawingProgram = std::make_shared<OpenglProgram>();
@@ -213,6 +215,8 @@ struct ParticleRenderer
 		planeDrawingProgram_uVPMatrix = planeDrawingProgram->registerUniform("uVPMatrix");
 		planeDrawingProgram_uModelMatrix = planeDrawingProgram->registerUniform("uModelMatrix");
 		planeDrawingProgram_uCameraPosition = planeDrawingProgram->registerUniform("uCameraPos");
+		planeDrawingProgram_uShadowMatrix = planeDrawingProgram->registerUniform("uShadowMatrix");
+		planeDrawingProgram_uShadowMap = planeDrawingProgram->registerUniform("uShadowMap");
 	}
 
 	GLuint meshShadowFramebufferHandle;
@@ -226,15 +230,22 @@ struct ParticleRenderer
 		glGenFramebuffers(1, &meshShadowFramebufferHandle);
 		glBindFramebuffer(GL_FRAMEBUFFER, meshShadowFramebufferHandle);
 
+		GLuint depthRenderbuffer;
+		glGenRenderbuffers(1, &depthRenderbuffer);
+		glBindRenderbuffer(GL_RENDERBUFFER, depthRenderbuffer);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, 1024, 1024);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderbuffer);
+
 		glGenTextures(1, &meshShadowDepthTextureHandle);
 		glBindTexture(GL_TEXTURE_2D, meshShadowDepthTextureHandle);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, 1024, 1024, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1024, 1024, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, meshShadowDepthTextureHandle, 0);
-		glDrawBuffer(GL_NONE);
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, meshShadowDepthTextureHandle, 0);
+		GLenum drawBuffers[1] = {GL_COLOR_ATTACHMENT0};
+		glDrawBuffers(1, drawBuffers);
 
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 			throw std::exception("framebuffer error");
@@ -400,7 +411,6 @@ struct ParticleRenderer
 			glDisableVertexAttribArray(0);
 		}
 
-		/*
 		// render plane
 		{
 			glUseProgram(planeDrawingProgram->mHandle);
@@ -410,6 +420,12 @@ struct ParticleRenderer
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planeMesh->mGl.mIndicesBuffer->mHandle);
 			planeDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
 			planeDrawingProgram_uCameraPosition->setVec3(camera.pos);
+			planeDrawingProgram_uShadowMatrix->setMat4(shadowMatrix);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, meshShadowDepthTextureHandle);
+			planeDrawingProgram_uShadowMap->setInt(0);
+
 			for (const Plane & plane : scene->planes)
 			{
 				planeDrawingProgram_uModelMatrix->setMat4(plane.modelMatrix);
@@ -417,7 +433,6 @@ struct ParticleRenderer
 			}
 			glDisableVertexAttribArray(0);
 		}
-		*/
 	}
 
 	float4* mapParticlePositionsSsbo()
