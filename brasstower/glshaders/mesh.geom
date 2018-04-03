@@ -9,6 +9,13 @@ out vec3 gNormal;
 out vec3 gPosition;
 out vec4 gShadowCoord;
 
+vec2 poissonDisk[4] = vec2[](
+	vec2( -0.94201624, -0.39906216 ),
+ 	vec2( 0.94558609, -0.76890725 ),
+ 	vec2( -0.094184101, -0.92938870 ),
+ 	vec2( 0.34495938, 0.29387760 )
+);
+
 void main()
 {
 	gNormal = normalize(cross(vPosition[1] - vPosition[0], vPosition[2] - vPosition[0]));

@@ -15,5 +15,5 @@ layout (std430, binding=0) buffer ParticlePositions
 void main()
 {
 	gl_Position = uShadowMatrix * modelMatrices[uRigidBodyId] * vec4(vertexPos, 1.0);
-	vPosition = gl_Position.xyz / gl_Position.w;
+	vPosition = gl_Position.xyz / gl_Position.w * 0.5f + 0.5f;
 }

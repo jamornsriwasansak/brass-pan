@@ -22,8 +22,8 @@ void main()
 	float dist2 = dot(diffPos, diffPos);
 	float attenuation = min(400.0 / dist2, 1.0f);
 
-	vec3 projShadowCoord = vShadowCoord.xyz / vShadowCoord.w;
-	vec3 shadowColor = texture(uShadowMap, projShadowCoord.xy * 0.5f + 0.5f).xyz;
+	vec3 projShadowCoord = vShadowCoord.xyz / vShadowCoord.w * 0.5f + 0.5f;
+	vec3 shadowColor = texture(uShadowMap, projShadowCoord.xy).xyz;
 
 	color = vec4(diffuseReflectance * attenuation * vec3(1.0f - shadowColor.z), 1.0f);
 }

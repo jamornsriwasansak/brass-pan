@@ -85,7 +85,7 @@ struct PointLight
 {
 	glm::mat4 shadowMatrix()
 	{
-		glm::mat4 projMatrix = glm::perspective(glm::radians(150.0f), 1.0f, 0.5f, 10.0f);
+		glm::mat4 projMatrix = glm::perspective(glm::radians(60.0f), 1.0f, 0.5f, 100.0f);
 		glm::mat4 viewMatrix = glm::lookAt(position, position + direction, glm::vec3(0, 1, 0));
 		return projMatrix * viewMatrix;
 	}

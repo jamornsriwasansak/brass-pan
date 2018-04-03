@@ -238,7 +238,7 @@ struct ParticleRenderer
 
 		glGenTextures(1, &meshShadowDepthTextureHandle);
 		glBindTexture(GL_TEXTURE_2D, meshShadowDepthTextureHandle);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1024, 1024, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, 1024, 1024, 0, GL_RGB, GL_FLOAT, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -341,6 +341,35 @@ struct ParticleRenderer
 
 	void update()
 	{
+		glBindFramebuffer(GL_FRAMEBUFFER, meshShadowFramebufferHandle);
+		glViewport(0, 0, 1024, 1024);
+		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+		glm::mat4 shadowMatrix = scene->pointLight.shadowMatrix();
+		// render shadow map
+		{
+			// for mesh
+			{
+				glUseProgram(meshShadowProgram->mHandle);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, meshShadowProgram_ssboBinding, rigidBodyMatricesSsboBuffer);
+				glEnableVertexAttribArray(0);
+				meshShadowProgram_uShadowMatrix->setMat4(shadowMatrix);
+				for (int i = 0; i < scene->numRigidBodies; i++)
+				{
+					glBindBuffer(GL_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mVerticesBuffer->mHandle);
+					glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+					glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mIndicesBuffer->mHandle);
+					meshShadowProgram_uRigidBodyId->setInt(i);
+					glDrawElements(GL_TRIANGLES, scene->rigidBodies[i]->mesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
+				}
+				glDisableVertexAttribArray(0);
+			}
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
+		glViewport(0, 0, 1280, 720);
+		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+		glm::mat4 cameraVpMatrix = camera.vpMatrix();
+
 		/*
 		// render particles
 		{
@@ -358,31 +387,6 @@ struct ParticleRenderer
 		}
 		*/
 
-		glBindFramebuffer(GL_FRAMEBUFFER, meshShadowFramebufferHandle);
-		glViewport(0, 0, 1024, 1024);
-		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-		glm::mat4 shadowMatrix = scene->pointLight.shadowMatrix();
-		// render shadow map
-		{
-			glUseProgram(meshShadowProgram->mHandle);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, meshShadowProgram_ssboBinding, rigidBodyMatricesSsboBuffer);
-			glEnableVertexAttribArray(0);
-			meshShadowProgram_uShadowMatrix->setMat4(shadowMatrix);
-			for (int i = 0; i < scene->numRigidBodies; i++)
-			{
-				glBindBuffer(GL_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mVerticesBuffer->mHandle);
-				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, scene->rigidBodies[i]->mesh->mGl.mIndicesBuffer->mHandle);
-				meshShadowProgram_uRigidBodyId->setInt(i);
-				glDrawElements(GL_TRIANGLES, scene->rigidBodies[i]->mesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
-			}
-			glDisableVertexAttribArray(0);
-		}
-
-		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
-		glViewport(0, 0, 1280, 720);
-		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-		glm::mat4 cameraVpMatrix = camera.vpMatrix();
 		// render rigidbody meshes
 		{
 			glUseProgram(meshDrawingProgram->mHandle);

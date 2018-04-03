@@ -18,6 +18,7 @@ void main()
 	mat4 modelMatrix = modelMatrices[uRigidBodyId];
 	vec4 pos = modelMatrix * vec4(vertexPos, 1.0);
 	vShadowCoord = uShadowMatrix * pos;
+	vShadowCoord = vShadowCoord / vShadowCoord.w * 0.5f + 0.5f;
 	gl_Position = uVPMatrix * pos;
 	vPosition = pos.xyz;
 }
