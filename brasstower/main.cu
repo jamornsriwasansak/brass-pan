@@ -136,10 +136,9 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->numMaxRigidBodies = 128;
 	scene->radius = 0.05f;
 
-	scene->pointLight.direction = glm::normalize(glm::vec3(-1, -1, -1));
-	scene->pointLight.exponent = 1.0f;
-	scene->pointLight.intensity = glm::vec3(50.0f);
-	scene->pointLight.position = glm::vec3(2, 2, 2);
+	scene->pointLight.intensity = glm::vec3(10.0f);
+	scene->pointLight.position = glm::vec3(1, 5, 1);
+	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
 	//scene->granulars.push_back(glm::vec3(1, 1, 1));
 	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(glm::vec3(0.8, 0.4, 0.2), glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));

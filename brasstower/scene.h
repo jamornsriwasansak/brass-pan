@@ -85,7 +85,7 @@ struct PointLight
 {
 	glm::mat4 shadowMatrix()
 	{
-		glm::mat4 projMatrix = glm::perspective(glm::radians(60.0f), 1.0f, 0.5f, 100.0f);
+		glm::mat4 projMatrix = glm::perspective(thetaMinMax.y * 2.0f, 1.0f, 0.5f, 100.0f);
 		glm::mat4 viewMatrix = glm::lookAt(position, position + direction, glm::vec3(0, 1, 0));
 		return projMatrix * viewMatrix;
 	}
@@ -93,7 +93,7 @@ struct PointLight
 	glm::vec3 position;
 	glm::vec3 direction;
 	glm::vec3 intensity;
-	float exponent;
+	glm::vec2 thetaMinMax = glm::radians(glm::vec2(45.f, 50.0f));
 };
 
 struct Scene

@@ -173,7 +173,7 @@ struct ParticleRenderer
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightPosition;
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightDir;
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightIntensity;
-	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightExponent;
+	std::shared_ptr<OpenglUniform> meshDrawingProgram_uLightThetaMinMax;
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uShadowMatrix;
 	std::shared_ptr<OpenglUniform> meshDrawingProgram_uShadowMap;
 	GLuint meshDrawingProgram_ssboBinding;
@@ -191,7 +191,7 @@ struct ParticleRenderer
 		meshDrawingProgram_uLightPosition = meshDrawingProgram->registerUniform("uLightPosition");
 		meshDrawingProgram_uLightDir = meshDrawingProgram->registerUniform("uLightDir");
 		meshDrawingProgram_uLightIntensity = meshDrawingProgram->registerUniform("uLightIntensity");
-		meshDrawingProgram_uLightExponent = meshDrawingProgram->registerUniform("uLightExponent");
+		meshDrawingProgram_uLightThetaMinMax = meshDrawingProgram->registerUniform("uLightThetaMinMax");
 		meshDrawingProgram_uShadowMatrix = meshDrawingProgram->registerUniform("uShadowMatrix");
 		meshDrawingProgram_uShadowMap = meshDrawingProgram->registerUniform("uShadowMap");
 		GLuint index = glGetProgramResourceIndex(meshDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ModelMatrices");
@@ -203,8 +203,13 @@ struct ParticleRenderer
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uVPMatrix;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uModelMatrix;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uCameraPosition;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uLightPosition;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uLightDir;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uLightIntensity;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uLightThetaMinMax;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uShadowMatrix;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uShadowMap;
+	std::shared_ptr<OpenglUniform> planeDrawingProgram_uPlaneNormal;
 	void initInfinitePlaneDrawingProgram()
 	{
 		planeDrawingProgram = std::make_shared<OpenglProgram>();
@@ -215,8 +220,13 @@ struct ParticleRenderer
 		planeDrawingProgram_uVPMatrix = planeDrawingProgram->registerUniform("uVPMatrix");
 		planeDrawingProgram_uModelMatrix = planeDrawingProgram->registerUniform("uModelMatrix");
 		planeDrawingProgram_uCameraPosition = planeDrawingProgram->registerUniform("uCameraPos");
+		planeDrawingProgram_uLightPosition = planeDrawingProgram->registerUniform("uLightPosition");
+		planeDrawingProgram_uLightDir = planeDrawingProgram->registerUniform("uLightDir");
+		planeDrawingProgram_uLightIntensity = planeDrawingProgram->registerUniform("uLightIntensity");
+		planeDrawingProgram_uLightThetaMinMax = planeDrawingProgram->registerUniform("uLightThetaMinMax");
 		planeDrawingProgram_uShadowMatrix = planeDrawingProgram->registerUniform("uShadowMatrix");
 		planeDrawingProgram_uShadowMap = planeDrawingProgram->registerUniform("uShadowMap");
+		planeDrawingProgram_uPlaneNormal = planeDrawingProgram->registerUniform("uPlaneNormal");
 	}
 
 	GLuint meshShadowFramebufferHandle;
@@ -392,10 +402,12 @@ struct ParticleRenderer
 			glUseProgram(meshDrawingProgram->mHandle);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, meshDrawingProgram_ssboBinding, rigidBodyMatricesSsboBuffer);
 			glEnableVertexAttribArray(0);
+
 			meshDrawingProgram_uLightPosition->setVec3(scene->pointLight.position);
 			meshDrawingProgram_uLightDir->setVec3(scene->pointLight.direction);
-			meshDrawingProgram_uLightExponent->setFloat(scene->pointLight.exponent);
 			meshDrawingProgram_uLightIntensity->setVec3(scene->pointLight.intensity);
+			meshDrawingProgram_uLightThetaMinMax->setVec2(scene->pointLight.thetaMinMax);
+
 			meshDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
 			meshDrawingProgram_uShadowMatrix->setMat4(shadowMatrix);
 
@@ -422,6 +434,12 @@ struct ParticleRenderer
 			glBindBuffer(GL_ARRAY_BUFFER, planeMesh->mGl.mVerticesBuffer->mHandle);
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planeMesh->mGl.mIndicesBuffer->mHandle);
+
+			planeDrawingProgram_uLightPosition->setVec3(scene->pointLight.position);
+			planeDrawingProgram_uLightDir->setVec3(scene->pointLight.direction);
+			planeDrawingProgram_uLightIntensity->setVec3(scene->pointLight.intensity);
+			planeDrawingProgram_uLightThetaMinMax->setVec2(scene->pointLight.thetaMinMax);
+
 			planeDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
 			planeDrawingProgram_uCameraPosition->setVec3(camera.pos);
 			planeDrawingProgram_uShadowMatrix->setMat4(shadowMatrix);
@@ -432,6 +450,7 @@ struct ParticleRenderer
 
 			for (const Plane & plane : scene->planes)
 			{
+				planeDrawingProgram_uPlaneNormal->setVec3(plane.normal);
 				planeDrawingProgram_uModelMatrix->setMat4(plane.modelMatrix);
 				glDrawElements(GL_TRIANGLES, planeMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
 			}
