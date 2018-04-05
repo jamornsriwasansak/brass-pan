@@ -13,6 +13,8 @@
 #include <ctime>
 #include <chrono>
 
+#include "global.h"
+
 #include "ext/helper_math.h"
 #include "opengl/shader.h"
 #include "mesh.h"
@@ -136,14 +138,15 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->numMaxRigidBodies = 128;
 	scene->radius = 0.05f;
 
-	scene->pointLight.intensity = glm::vec3(10.0f);
+	scene->pointLight.intensity = glm::vec3(5.0f);
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
 	//scene->granulars.push_back(glm::vec3(1, 1, 1));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(glm::vec3(0.8, 0.4, 0.2), glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(glm::vec3(0.2, 0.7, 0.1), glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 1, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(glm::vec3(0.8, 0.2, 0.5), glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 3, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(BlackBoardColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 1, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(GrainColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 3, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(TanColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 4, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
 
 	return scene;
 }

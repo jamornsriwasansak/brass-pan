@@ -107,6 +107,7 @@ copy /y /d $(SolutionDir)dependencies\bin\*.dll $(SolutionDir)sandbox</Command>
     <ClInclude Include="cuda\cudaglm.cuh" />
     <ClInclude Include="cuda\cudamatrix.cuh" />
     <ClInclude Include="cuda\helper.cuh" />
+    <ClInclude Include="global.h" />
     <ClInclude Include="opengl\framebuffer.h" />
     <ClInclude Include="particlerenderer.cuh" />
     <ClInclude Include="particlesolver.cuh" />

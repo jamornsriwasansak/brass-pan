@@ -202,7 +202,6 @@ struct ParticleRenderer
 	std::shared_ptr<OpenglProgram> planeDrawingProgram;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uVPMatrix;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uModelMatrix;
-	std::shared_ptr<OpenglUniform> planeDrawingProgram_uCameraPosition;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uLightPosition;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uLightDir;
 	std::shared_ptr<OpenglUniform> planeDrawingProgram_uLightIntensity;
@@ -219,7 +218,6 @@ struct ParticleRenderer
 
 		planeDrawingProgram_uVPMatrix = planeDrawingProgram->registerUniform("uVPMatrix");
 		planeDrawingProgram_uModelMatrix = planeDrawingProgram->registerUniform("uModelMatrix");
-		planeDrawingProgram_uCameraPosition = planeDrawingProgram->registerUniform("uCameraPos");
 		planeDrawingProgram_uLightPosition = planeDrawingProgram->registerUniform("uLightPosition");
 		planeDrawingProgram_uLightDir = planeDrawingProgram->registerUniform("uLightDir");
 		planeDrawingProgram_uLightIntensity = planeDrawingProgram->registerUniform("uLightIntensity");
@@ -248,7 +246,7 @@ struct ParticleRenderer
 
 		glGenTextures(1, &meshShadowDepthTextureHandle);
 		glBindTexture(GL_TEXTURE_2D, meshShadowDepthTextureHandle);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, 1024, 1024, 0, GL_RGB, GL_FLOAT, 0);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 1024, 1024, 0, GL_RED, GL_FLOAT, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -441,7 +439,6 @@ struct ParticleRenderer
 			planeDrawingProgram_uLightThetaMinMax->setVec2(scene->pointLight.thetaMinMax);
 
 			planeDrawingProgram_uVPMatrix->setMat4(cameraVpMatrix);
-			planeDrawingProgram_uCameraPosition->setVec3(camera.pos);
 			planeDrawingProgram_uShadowMatrix->setMat4(shadowMatrix);
 
 			glActiveTexture(GL_TEXTURE0);
