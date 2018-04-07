@@ -16,7 +16,9 @@
 #include "scene.h"
 
 #define NUM_MAX_PARTICLE_PER_CELL 4
-#define ENERGY_LOST_RATIO 0.1f;
+#define ENERGY_LOST_RATIO 0.1f
+#define FRICTION_STATIC 0.5f
+#define FRICTION_DYNAMICS 0.5f
 
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
@@ -275,9 +277,24 @@ __global__ void particlePlaneCollisionConstraint(float3 * __restrict__ newPositi
 	float distance = dot(origin2position, planeNormal) + radius;
 	if (distance <= 0) { return; }
 
-	float diffPosition = dot(newPositions[i] - positions[i], planeNormal);
-	newPositions[i] += distance * planeNormal;
-	positions[i] += (2.0f * diffPosition + distance) * planeNormal * ENERGY_LOST_RATIO;
+	float3 diff = newPositions[i] - positions[i];
+	float diffNormal = dot(diff, planeNormal);
+	float3 diffTangent = diff - diffNormal * planeNormal;
+	float diffTangentLength = length(diffTangent);
+	float diffLength = length(diff);
+	
+	float3 resolvedPosition = distance * planeNormal + newPositions[i];
+	positions[i] += (2.0f * diffNormal + distance) * planeNormal * ENERGY_LOST_RATIO;
+
+	// Adaptation of Unified Particle Physics for Real-Time Applications, eq.24 
+	if (diffTangentLength < FRICTION_STATIC * diffNormal)
+	{
+		newPositions[i] = resolvedPosition - diffTangent;
+	}
+	else
+	{
+		newPositions[i] = resolvedPosition - diffTangent * min(FRICTION_DYNAMICS * -diffNormal / diffTangentLength, 1.0f);
+	}
 }
 
 __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
@@ -426,7 +443,6 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	if (threadIdx.x < numParticles)
 	{
 		float3 newPosition = extractedR * qi + CM;
-		//float3 newPosition = qi + CM;
 		positions[particleId] = newPosition;
 	}
 }
