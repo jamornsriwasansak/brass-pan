@@ -732,11 +732,14 @@ struct ParticleSolver
 																				   scene->radius);
 					std::swap(devTempNewPositions, devNewPositions);
 					// solve all rigidbody constraints
-					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
-																									  devRigidBodyCMs,
-																									  devNewPositions,
-																									  devRigidBodyInitialPositions,
-																									  devRigidBodyParticleIdRange);
+					if (scene->numRigidBodies > 0)
+					{ 
+						shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
+																										  devRigidBodyCMs,
+																										  devNewPositions,
+																										  devRigidBodyInitialPositions,
+																										  devRigidBodyParticleIdRange);
+					}
 				}
 			}
 
