@@ -209,14 +209,17 @@ int main()
 			renderer->unmapParticlePositionsSsbo();
 		}
 		{
-			matrix4 *dptr = renderer->mapMatricesSsbo();
-			int numBlocks, numThreads;
-			GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numRigidBodies);
-			mapMatrices<<<numBlocks, numThreads>>>(dptr,
-												   solver->devRigidBodyRotations,
-												   solver->devRigidBodyCMs,
-												   scene->numRigidBodies);
-			renderer->unmapMatricesSsbo();
+			if (scene->numRigidBodies > 0)
+			{ 
+				matrix4 *dptr = renderer->mapMatricesSsbo();
+				int numBlocks, numThreads;
+				GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numRigidBodies);
+				mapMatrices<<<numBlocks, numThreads>>>(dptr,
+													   solver->devRigidBodyRotations,
+													   solver->devRigidBodyCMs,
+													   scene->numRigidBodies);
+				renderer->unmapMatricesSsbo();
+			}
 		}
 		renderer->update();
 
