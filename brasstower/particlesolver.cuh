@@ -299,6 +299,8 @@ __global__ void particlePlaneCollisionConstraint(float3 * __restrict__ newPositi
 
 __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
 													const float3 * __restrict__ newPositionsPrev,
+													const float3 * __restrict__ positions,
+													const float * __restrict__ invMasses,
 													const int* __restrict__ phases,
 													const int* __restrict__ sortedCellId,
 													const int* __restrict__ sortedParticleId,
@@ -312,8 +314,10 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 
-	float3 positionPrev = newPositionsPrev[i];
-	float3 positionNext = positionPrev;
+	float3 position = positions[i];
+	float3 newPositionPrev = newPositionsPrev[i];
+	float3 newPositionNext = newPositionPrev;
+	float invMass = invMasses[i];
 
 	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
 	int3 start = centerGridPos - 1;
@@ -337,18 +341,20 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 					if (i != particleId2 && phases[i] != phases[particleId2])
 					{
 						float3 position2 = newPositionsPrev[particleId2];
-						float3 diff = positionPrev - position2;
+						float3 diff = newPositionPrev - position2;
 						float dist2 = length2(diff);
+						float invMass2 = invMasses[particleId2];
 						if (dist2 < radius * radius * 4.0f)
 						{
 							float dist = sqrtf(dist2);
-							positionNext -= diff * (0.5f - radius / dist);
+							float weight = invMass / (invMass + invMass2);
+							newPositionNext += diff * weight * (2.0f * radius / dist - 1.0f);
 						}
 					}
 				}
 			}
 
-	newPositionsNext[i] = positionNext;
+	newPositionsNext[i] = newPositionNext;
 }
 
 // Meshless Deformations Based on Shape Matching
@@ -474,8 +480,8 @@ struct ParticleSolver
 		setDevArr_float4<<<numBlocksRigidBody, numThreadsRigidBody>>>(devRigidBodyRotations, make_float4(0, 0, 0, 1), scene->numMaxRigidBodies);
 
 		// alloc phase counter
-		checkCudaErrors(cudaMalloc(&devPhaseCounter, sizeof(int)));
-		checkCudaErrors(cudaMemset(devPhaseCounter, 0, sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devSolidPhaseCounter, sizeof(int)));
+		checkCudaErrors(cudaMemset(devSolidPhaseCounter, 1, sizeof(int)));
 
 		// alloc grid accel
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
@@ -489,7 +495,7 @@ struct ParticleSolver
 		// start initing the scene
 		for (std::shared_ptr<RigidBody> rigidBody : scene->rigidBodies)
 		{
-			addRigidBody(rigidBody->positions, rigidBody->positions_CM_Origin, 1.0f);
+			addRigidBody(rigidBody->positions, rigidBody->positions_CM_Origin, rigidBody->massPerParticle);
 		}
 
 		for (const glm::vec3 & particlePos : scene->granulars)
@@ -542,7 +548,7 @@ struct ParticleSolver
 		// set positions
 		initPositionBox<<<numBlocks, numThreads>>>(devPositions + scene->numParticles,
 												   devPhases + scene->numParticles,
-												   devPhaseCounter,
+												   devSolidPhaseCounter,
 												   make_int3(dimension),
 												   make_float3(startPosition),
 												   make_float3(step),
@@ -602,14 +608,14 @@ struct ParticleSolver
 												   numParticles);
 		// set phases
 		setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
-													   devPhaseCounter,
+													   devSolidPhaseCounter,
 													   numParticles);
 		// set range for particle id
 		setDevArr_int2<<<1, 1>>>(devRigidBodyParticleIdRange + scene->numRigidBodies,
 								 make_int2(scene->numParticles, scene->numParticles + numParticles),
 								 1);
 		// increment phase counter
-		increment<<<1, 1>>>(devPhaseCounter);
+		increment<<<1, 1>>>(devSolidPhaseCounter);
 		
 		scene->numParticles += numParticles;
 		scene->numRigidBodies += 1;
@@ -697,7 +703,7 @@ struct ParticleSolver
 				// compute grid
 				updateGrid(numBlocks, numThreads);
 
-				for (int j = 0; j < 5; j++)
+				for (int j = 0; j < 4; j++)
 				{
 					// solving all plane collisions
 					for (const Plane & plane : scene->planes)
@@ -713,6 +719,8 @@ struct ParticleSolver
 					// solving all particles collisions
 					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devTempNewPositions,
 																				   devNewPositions,
+																				   devPositions,
+																				   devInvMasses,
 																				   devPhases,
 																				   devSortedCellId,
 																				   devSortedParticleId,
@@ -757,7 +765,7 @@ struct ParticleSolver
 	float *		devMasses;
 	float *		devInvMasses;
 	int *		devPhases;
-	int *		devPhaseCounter;
+	int *		devSolidPhaseCounter;
 
 	int *		devSortedCellId;
 	int *		devSortedParticleId;

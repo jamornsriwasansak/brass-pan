@@ -143,10 +143,10 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
 	//scene->granulars.push_back(glm::vec3(1, 1, 1));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(BlackBoardColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 1, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(GrainColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 3, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(TanColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 4, 0 - scene->radius), glm::vec3(scene->radius * 2.0f)));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 2.0f));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(BlackBoardColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 1, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.5f));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(GrainColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 3, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.0f));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(TanColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 4, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 0.5f));
 
 	return scene;
 }

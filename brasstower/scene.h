@@ -42,13 +42,17 @@ struct RigidBody
 	glm::vec3 CM; // center of mass
 	glm::vec3 color;
 
+	float massPerParticle;
+
 	static std::shared_ptr<RigidBody> CreateRigidBox(const glm::vec3 & color,
 													 const glm::ivec3 & dimension,
 													 const glm::vec3 & startPosition,
-													 const glm::vec3 & stepSize)
+													 const glm::vec3 & stepSize,
+													 const float massPerParticle)
 	{
 		std::shared_ptr<RigidBody> result = std::make_shared<RigidBody>();
 		result->color = color;
+		result->massPerParticle = massPerParticle;
 
 		std::vector<glm::vec3> & positions = result->positions;
 		glm::vec3 CM = glm::vec3(0.0f);
