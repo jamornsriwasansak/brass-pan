@@ -279,6 +279,12 @@ struct ParticleRenderer
 		glGenFramebuffers(1, &particlesColorCodeFramebufferHandle);
 		glBindFramebuffer(GL_FRAMEBUFFER, particlesColorCodeFramebufferHandle);
 
+		GLuint depthRenderbuffer;
+		glGenRenderbuffers(1, &depthRenderbuffer);
+		glBindRenderbuffer(GL_RENDERBUFFER, depthRenderbuffer);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, resolution.x, resolution.y);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderbuffer);
+
 		glGenTextures(1, &particlesColorCodeTextureHandle);
 		glBindTexture(GL_TEXTURE_2D, particlesColorCodeTextureHandle);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
