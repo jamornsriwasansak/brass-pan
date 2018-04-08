@@ -384,7 +384,6 @@ struct ParticleRenderer
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		glm::mat4 cameraVpMatrix = camera.vpMatrix();
 
-		/*
 		// render particles
 		{
 			glUseProgram(particlesDrawingProgram->mHandle);
@@ -399,7 +398,6 @@ struct ParticleRenderer
 			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
 			glDisableVertexAttribArray(0);
 		}
-		*/
 
 		// render rigidbody meshes
 		{

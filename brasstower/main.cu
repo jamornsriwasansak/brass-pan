@@ -175,6 +175,7 @@ int main()
 	std::shared_ptr<Scene> scene = initSimpleScene();
 	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
 	solver = new ParticleSolver(scene);
+	//solver->addParticles(glm::ivec3(40, 50, 20), glm::vec3(0 - scene->radius, scene->radius, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.0f);
 
 	// fps counter
 	std::chrono::high_resolution_clock::time_point lastUpdateTime = std::chrono::high_resolution_clock::now();

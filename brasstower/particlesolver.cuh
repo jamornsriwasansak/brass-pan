@@ -340,15 +340,32 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 					if (i != particleId2 && phases[i] != phases[particleId2])
 					{
-						float3 position2 = newPositionsPrev[particleId2];
-						float3 diff = newPositionPrev - position2;
+						float3 newPosition2 = newPositionsPrev[particleId2];
+						float3 diff = newPositionPrev - newPosition2;
 						float dist2 = length2(diff);
 						float invMass2 = invMasses[particleId2];
 						if (dist2 < radius * radius * 4.0f)
 						{
 							float dist = sqrtf(dist2);
 							float weight = invMass / (invMass + invMass2);
-							newPositionNext += diff * weight * (2.0f * radius / dist - 1.0f);
+							float3 deltaX = diff * weight * (2.0f * radius / dist - 1.0f);
+							//newPositionNext += deltaX;
+
+							float3 resolvedPosition = deltaX + newPositionPrev;
+							float3 n = normalize(resolvedPosition - newPosition2);
+							float3 moved = resolvedPosition - position;
+							float movedNormal = dot(moved, n);
+							float3 movedTangent = moved - movedNormal * n;
+							if (length(deltaX) > radius * 0.005f)
+							{
+								float3 frictionedPosition = (1.0f - min(0.5f * dist, 1.0f)) * movedTangent + movedNormal * n + position;
+								newPositionNext += frictionedPosition - newPositionPrev;
+							}
+							else
+							{
+								float3 frictionedPosition = movedTangent + movedNormal * n + position;
+								newPositionNext += frictionedPosition - newPositionPrev;
+							}
 						}
 					}
 				}
