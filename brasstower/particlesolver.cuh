@@ -277,23 +277,28 @@ __global__ void particlePlaneCollisionConstraint(float3 * __restrict__ newPositi
 	float distance = dot(origin2position, planeNormal) + radius;
 	if (distance <= 0) { return; }
 
-	float3 diff = newPositions[i] - positions[i];
+	float3 position = positions[i];
+
+	float3 diff = newPositions[i] - position;
 	float diffNormal = dot(diff, planeNormal);
 	float3 diffTangent = diff - diffNormal * planeNormal;
 	float diffTangentLength = length(diffTangent);
 	float diffLength = length(diff);
 	
 	float3 resolvedPosition = distance * planeNormal + newPositions[i];
-	positions[i] += (2.0f * diffNormal + distance) * planeNormal * ENERGY_LOST_RATIO;
+	float3 deltaX = resolvedPosition - position;
+	float3 tangentialDeltaX = deltaX - dot(deltaX, planeNormal) * planeNormal;
+
+	//positions[i] += (2.0f * diffNormal + distance) * planeNormal * ENERGY_LOST_RATIO;
 
 	// Adaptation of Unified Particle Physics for Real-Time Applications, eq.24 
 	if (diffTangentLength < FRICTION_STATIC * diffNormal)
 	{
-		newPositions[i] = resolvedPosition - diffTangent;
+		newPositions[i] = resolvedPosition - tangentialDeltaX;
 	}
 	else
 	{
-		newPositions[i] = resolvedPosition - diffTangent * min(FRICTION_DYNAMICS * -diffNormal / diffTangentLength, 1.0f);
+		newPositions[i] = resolvedPosition - tangentialDeltaX;// *min(FRICTION_DYNAMICS * -diffNormal / diffTangentLength, 1.0f);
 	}
 }
 
@@ -314,15 +319,17 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 
-	float3 position = positions[i];
-	float3 newPositionPrev = newPositionsPrev[i];
-	float3 newPositionNext = newPositionPrev;
+	float3 xi = positions[i];
+	float3 xiPrev = newPositionsPrev[i];
+	float3 sumDeltaXi = make_float3(0.f);
+	float3 sumFriction = make_float3(0.f);
 	float invMass = invMasses[i];
 
 	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
 	int3 start = centerGridPos - 1;
 	int3 end = centerGridPos + 1;
 
+	int constraintCount = 0;
 	for (int z = start.z; z <= end.z; z++)
 		for (int y = start.y; y <= end.y; y++)
 			for (int x = start.x; x <= end.x; x++)
@@ -332,7 +339,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 				int bucketStart = cellStart[gridAddress];
 				if (bucketStart == -1) { continue; }
 
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int k = 0; /*k < NUM_MAX_PARTICLE_PER_CELL &&*/ k + bucketStart < numParticles; k++)
 				{
 					int gridAddress2 = sortedCellId[bucketStart + k];
 					int particleId2 = sortedParticleId[bucketStart + k];
@@ -340,38 +347,45 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 					if (i != particleId2 && phases[i] != phases[particleId2])
 					{
-						float3 newPosition2 = newPositionsPrev[particleId2];
-						float3 diff = newPositionPrev - newPosition2;
+						float3 xjPrev = newPositionsPrev[particleId2];
+						float3 diff = xiPrev - xjPrev;
 						float dist2 = length2(diff);
 						float invMass2 = invMasses[particleId2];
 						if (dist2 < radius * radius * 4.0f)
 						{
-							float dist = sqrtf(dist2);
-							float weight = invMass / (invMass + invMass2);
-							float3 deltaX = diff * weight * (2.0f * radius / dist - 1.0f);
-							//newPositionNext += deltaX;
+							constraintCount += 1;
 
-							float3 resolvedPosition = deltaX + newPositionPrev;
-							float3 n = normalize(resolvedPosition - newPosition2);
-							float3 moved = resolvedPosition - position;
-							float movedNormal = dot(moved, n);
-							float3 movedTangent = moved - movedNormal * n;
-							if (length(deltaX) > radius * 0.005f)
+							float dist = sqrtf(dist2);
+							float weight1 = invMass / (invMass + invMass2);
+							float weight2 = invMass / (invMass + invMass2);
+
+							float3 deltaXi = diff * weight1 * (2.0f * radius / dist - 1.0f);
+							float3 xiStar = deltaXi + xiPrev;
+
+							sumDeltaXi += deltaXi;
+
+							float3 deltaXj = -diff * weight2 * (2.0f * radius / dist - 1.0f);
+							float3 xjStar = deltaXj + xjPrev;
+
+							float3 n = diff / dist;
+							
+							if (length(deltaXi) > radius * 0.005f)
 							{
-								float3 frictionedPosition = (1.0f - min(0.5f * dist, 1.0f)) * movedTangent + movedNormal * n + position;
-								newPositionNext += frictionedPosition - newPositionPrev;
-							}
-							else
-							{
-								float3 frictionedPosition = movedTangent + movedNormal * n + position;
-								newPositionNext += frictionedPosition - newPositionPrev;
+								float3 xj = positions[particleId2];
+
+								float3 term1 = (xiStar - xi) - (xjStar - xj);
+								float3 tangentialDeltaX = term1 - dot(term1, n) * n;
+
+								sumFriction -= weight1 * tangentialDeltaX;
 							}
 						}
 					}
 				}
 			}
 
-	newPositionsNext[i] = newPositionNext;
+	newPositionsNext[i] = (constraintCount == 0) ?
+		xiPrev + sumDeltaXi :
+		xiPrev + sumDeltaXi + sumFriction / (float)(constraintCount);
 }
 
 // Meshless Deformations Based on Shape Matching
