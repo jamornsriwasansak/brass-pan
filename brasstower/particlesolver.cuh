@@ -667,7 +667,7 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
 		// set masses
-		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
 												   massPerParticle,
 												   numParticles);
 
