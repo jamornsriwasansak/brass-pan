@@ -19,6 +19,8 @@
 #define ENERGY_LOST_RATIO 0.1f
 #define FRICTION_STATIC 0.5f
 #define FRICTION_DYNAMICS 0.5f
+#define MASS_SCALING_CONSTANT 5 // refers to k in equation (21)
+#define PARTICLE_SLEEPING_EPSILON 0.001
 
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
@@ -339,7 +341,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 				int bucketStart = cellStart[gridAddress];
 				if (bucketStart == -1) { continue; }
 
-				for (int k = 0; /*k < NUM_MAX_PARTICLE_PER_CELL &&*/ k + bucketStart < numParticles; k++)
+				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
 				{
 					int gridAddress2 = sortedCellId[bucketStart + k];
 					int particleId2 = sortedParticleId[bucketStart + k];
@@ -369,7 +371,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 							float3 n = diff / dist;
 							
-							if (length(deltaXi) > radius * 0.005f)
+							if (length(deltaXi) > radius * 0.001f)
 							{
 								float3 xj = positions[particleId2];
 
@@ -385,7 +387,22 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 	newPositionsNext[i] = (constraintCount == 0) ?
 		xiPrev + sumDeltaXi :
-		xiPrev + sumDeltaXi + sumFriction / (float)(constraintCount);
+		xiPrev + sumDeltaXi + sumFriction / constraintCount;
+}
+
+__global__ void computeInvScaledMasses(float* __restrict__ invScaledMasses,
+									   const float* __restrict__ masses,
+									   const float3* __restrict__ positions,
+									   const float k,
+									   const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+
+	const float e = 2.7182818284f;
+	const float height = positions[i].y;
+	const float scale = pow(e, -k * height);
+	invScaledMasses[i] = 1.0f / (scale * masses[i]);
 }
 
 // Meshless Deformations Based on Shape Matching
@@ -484,6 +501,21 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	}
 }
 
+__global__ void updatePositions(float3 * __restrict__ positions,
+								const float3 * __restrict__ newPositions,
+								const float threshold,
+								const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles) { return; }
+
+	const float3 x = positions[i];
+	const float3 newX = newPositions[i];
+
+	const float dist2 = length2(newX - x);
+	positions[i] = (dist2 >= threshold * threshold) ? newX : x;
+}
+
 struct ParticleSolver
 {
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
@@ -499,6 +531,7 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
+		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
 
 		// alloc rigid body
@@ -633,6 +666,11 @@ struct ParticleSolver
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
+		// set masses
+		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
+												   massPerParticle,
+												   numParticles);
+
 		// set inv masses
 		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
 												   1.0f / massPerParticle,
@@ -713,6 +751,14 @@ struct ParticleSolver
 														scene->numParticles,
 														subDeltaTime);
 
+
+			// compute scaled masses
+			computeInvScaledMasses<<<numBlocks, numThreads>>>(devInvScaledMasses,
+															  devMasses,
+															  devPositions,
+															  MASS_SCALING_CONSTANT,
+															  scene->numParticles);
+
 			// stabilize iterations
 			for (int i = 0; i < 2; i++)
 			{
@@ -734,7 +780,7 @@ struct ParticleSolver
 				// compute grid
 				updateGrid(numBlocks, numThreads);
 
-				for (int j = 0; j < 4; j++)
+				for (int j = 0; j < 5; j++)
 				{
 					// solving all plane collisions
 					for (const Plane & plane : scene->planes)
@@ -751,7 +797,7 @@ struct ParticleSolver
 					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devTempNewPositions,
 																				   devNewPositions,
 																				   devPositions,
-																				   devInvMasses,
+																				   devInvScaledMasses,
 																				   devPhases,
 																				   devSortedCellId,
 																				   devSortedParticleId,
@@ -778,8 +824,10 @@ struct ParticleSolver
 													  devNewPositions,
 													  devPositions,
 													  scene->numParticles,
-													   1.0f / subDeltaTime);
-			std::swap(devNewPositions, devPositions); // update position
+													  1.0f / subDeltaTime);
+
+			//std::swap(devNewPositions, devPositions); // update position
+			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
 		}
 
 		// we need to make picked particle immovable
@@ -798,6 +846,7 @@ struct ParticleSolver
 	float3 *	devVelocities;
 	float *		devMasses;
 	float *		devInvMasses;
+	float *		devInvScaledMasses;
 	int *		devPhases;
 	int *		devSolidPhaseCounter;
 
