@@ -363,29 +363,28 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 							float3 deltaXi = diff * weight1 * (2.0f * radius / dist - 1.0f);
 							float3 xiStar = deltaXi + xiPrev;
-
 							sumDeltaXi += deltaXi;
 
-							float3 deltaXj = -diff * weight2 * (2.0f * radius / dist - 1.0f);
-							float3 xjStar = deltaXj + xjPrev;
-
-							float3 n = diff / dist;
+							float deltaXiLength2 = length2(deltaXi);
 							
-							if (length(deltaXi) > radius * 0.001f)
+							if (deltaXiLength2 > radius * radius * 0.001f * 0.001f)
 							{
 								float3 xj = positions[particleId2];
-
+								float3 deltaXj = -diff * weight2 * (2.0f * radius / dist - 1.0f);
+								float3 xjStar = deltaXj + xjPrev;
 								float3 term1 = (xiStar - xi) - (xjStar - xj);
+								float3 n = diff / dist;
 								float3 tangentialDeltaX = term1 - dot(term1, n) * n;
 
-								float tangentialDeltaXLength = length(tangentialDeltaX);
-								if (tangentialDeltaXLength < FRICTION_STATIC * length(deltaXi))
+								float tangentialDeltaXLength2 = length2(tangentialDeltaX);
+
+								if (tangentialDeltaXLength2 < (FRICTION_STATIC * FRICTION_STATIC) * deltaXiLength2)
 								{
 									sumFriction -= weight1 * tangentialDeltaX;
 								}
 								else
 								{
-									sumFriction -= weight1 * tangentialDeltaX * min(FRICTION_DYNAMICS * length(deltaXi) / tangentialDeltaXLength, 1.0f);
+									sumFriction -= weight1 * tangentialDeltaX * min(FRICTION_DYNAMICS * sqrtf(deltaXiLength2 / tangentialDeltaXLength2), 1.0f);
 								}
 							}
 						}
