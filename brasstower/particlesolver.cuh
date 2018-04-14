@@ -19,7 +19,7 @@
 #define ENERGY_LOST_RATIO 0.1f
 #define FRICTION_STATIC 0.5f
 #define FRICTION_DYNAMICS 0.5f
-#define MASS_SCALING_CONSTANT 5 // refers to k in equation (21)
+#define MASS_SCALING_CONSTANT 2 // refers to k in equation (21)
 #define PARTICLE_SLEEPING_EPSILON 0.001
 
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
@@ -387,7 +387,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 	newPositionsNext[i] = (constraintCount == 0) ?
 		xiPrev + sumDeltaXi :
-		xiPrev + sumDeltaXi + sumFriction / constraintCount;
+		xiPrev + sumDeltaXi + sumFriction / constraintCount; // averaging constraints is very important here. otherwise the solver will explode.
 }
 
 __global__ void computeInvScaledMasses(float* __restrict__ invScaledMasses,
