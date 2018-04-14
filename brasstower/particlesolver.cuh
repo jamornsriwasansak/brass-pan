@@ -17,8 +17,8 @@
 
 #define NUM_MAX_PARTICLE_PER_CELL 4
 #define ENERGY_LOST_RATIO 0.1f
-#define FRICTION_STATIC 0.5f
-#define FRICTION_DYNAMICS 0.5f
+#define FRICTION_STATIC 0.2f
+#define FRICTION_DYNAMICS 0.8f
 #define MASS_SCALING_CONSTANT 2 // refers to k in equation (21)
 #define PARTICLE_SLEEPING_EPSILON 0.001
 
@@ -300,7 +300,7 @@ __global__ void particlePlaneCollisionConstraint(float3 * __restrict__ newPositi
 	}
 	else
 	{
-		newPositions[i] = resolvedPosition - tangentialDeltaX;// *min(FRICTION_DYNAMICS * -diffNormal / diffTangentLength, 1.0f);
+		newPositions[i] = resolvedPosition - tangentialDeltaX * min(FRICTION_DYNAMICS * -diffNormal / diffTangentLength, 1.0f);
 	}
 }
 
@@ -378,7 +378,15 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 								float3 term1 = (xiStar - xi) - (xjStar - xj);
 								float3 tangentialDeltaX = term1 - dot(term1, n) * n;
 
-								sumFriction -= weight1 * tangentialDeltaX;
+								float tangentialDeltaXLength = length(tangentialDeltaX);
+								if (tangentialDeltaXLength < FRICTION_STATIC * length(deltaXi))
+								{
+									sumFriction -= weight1 * tangentialDeltaX;
+								}
+								else
+								{
+									sumFriction -= weight1 * tangentialDeltaX * min(FRICTION_DYNAMICS * length(deltaXi) / tangentialDeltaXLength, 1.0f);
+								}
 							}
 						}
 					}
