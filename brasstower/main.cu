@@ -128,10 +128,10 @@ std::shared_ptr<Scene> initSimpleScene()
 {
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
 	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
+	/*scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
 	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
 	scene->planes.push_back(Plane(glm::vec3(-2.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));*/
 	scene->numParticles = 0;
 	scene->numMaxParticles = 50000;
 	scene->numRigidBodies = 0;
@@ -143,10 +143,11 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
 	//scene->granulars.push_back(glm::vec3(1, 1, 1));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 2.0f));
+	scene->granulars.push_back(Granulars::CreateGranularsBlock(glm::ivec3(30, 50, 30), glm::vec3(-6, scene->radius, -6), glm::vec3(scene->radius * 2.0f), 1.0f));
+	/*scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 2.0f));
 	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(BlackBoardColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 1, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.5f));
 	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(GrainColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 3, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.0f));
-	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(TanColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 4, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 0.5f));
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(TanColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 4, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 0.5f));*/
 
 	return scene;
 }
@@ -175,7 +176,6 @@ int main()
 	std::shared_ptr<Scene> scene = initSimpleScene();
 	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
 	solver = new ParticleSolver(scene);
-	//solver->addParticles(glm::ivec3(40, 50, 20), glm::vec3(0 - scene->radius, scene->radius, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.0f);
 
 	// fps counter
 	std::chrono::high_resolution_clock::time_point lastUpdateTime = std::chrono::high_resolution_clock::now();

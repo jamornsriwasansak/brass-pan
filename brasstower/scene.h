@@ -34,7 +34,6 @@ struct Plane
 struct RigidBody
 {
 	std::shared_ptr<Mesh> mesh;
-	size_t startIndex;
 	size_t numParticles;
 
 	std::vector<glm::vec3> positions;
@@ -85,6 +84,38 @@ struct RigidBody
 	}
 };
 
+struct Granulars
+{
+	std::vector<glm::vec3> positions;
+	size_t numParticles;
+
+	float massPerParticle;
+
+	static std::shared_ptr<Granulars> CreateGranularsBlock(const glm::ivec3 & dimension,
+														   const glm::vec3 & startPosition,
+														   const glm::vec3 & stepSize,
+														   const float massPerParticle)
+	{
+		std::shared_ptr<Granulars> result = std::make_shared<Granulars>();
+		result->massPerParticle = massPerParticle;
+
+		std::vector<glm::vec3> & positions = result->positions;
+		for (int i = 0; i < dimension.x; i++)
+			for (int j = 0; j < dimension.y; j++)
+				for (int k = 0; k < dimension.z; k++)
+				{
+					glm::vec3 position = startPosition + stepSize * glm::vec3(i, j, k);
+					positions.push_back(position);
+				}
+
+		return result;
+	}
+
+	Granulars()
+	{
+	}
+};
+
 struct PointLight
 {
 	glm::mat4 shadowMatrix()
@@ -104,7 +135,7 @@ struct Scene
 {
 	std::vector<Plane> planes;
 	std::vector<std::shared_ptr<RigidBody>> rigidBodies;
-	std::vector<glm::vec3> granulars; // position of solid particles (without any constraints)
+	std::vector<std::shared_ptr<Granulars>> granulars; // position of solid particles (without any constraints)
 
 	PointLight pointLight;
 

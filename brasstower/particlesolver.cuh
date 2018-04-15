@@ -16,7 +16,6 @@
 #include "scene.h"
 
 #define NUM_MAX_PARTICLE_PER_CELL 4
-#define ENERGY_LOST_RATIO 0.1f
 #define FRICTION_STATIC 0.2f
 #define FRICTION_DYNAMICS 0.8f
 #define MASS_SCALING_CONSTANT 2 // refers to k in equation (21)
@@ -137,9 +136,19 @@ __global__ void setDevArr_float4(float4 * __restrict__ devArr,
 	devArr[i] = val;
 }
 
+__global__ void setDevArr_counterIncrement(int * __restrict__ devArr,
+										  int * counter,
+										  const int incrementValue,
+										  const int numValues)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numValues) { return; }
+	devArr[i] = atomicAdd(counter, incrementValue);
+}
+
 __global__ void initPositionBox(float3 * __restrict__ positions,
 								int * __restrict__ phases,
-								int * __restrict__ phaseCounter,
+								int * phaseCounter,
 								const int3 dimension,
 								const float3 startPosition,
 								const float3 step,
@@ -569,9 +578,9 @@ struct ParticleSolver
 			addRigidBody(rigidBody->positions, rigidBody->positions_CM_Origin, rigidBody->massPerParticle);
 		}
 
-		for (const glm::vec3 & particlePos : scene->granulars)
+		for (std::shared_ptr<Granulars> granulars : scene->granulars)
 		{
-			addParticles(glm::vec3(1, 1, 1), particlePos, glm::vec3(0), 1.0f);
+			addGranulars(granulars->positions, granulars->massPerParticle);
 		}
 	}
 
@@ -602,14 +611,12 @@ struct ParticleSolver
 		setDevArr_float3<<<1, 1>>>(devVelocities + particleIndex, make_float3(velocity.x, velocity.y, velocity.z), 1);
 	}
 
-	void addParticles(const glm::ivec3 & dimension, const glm::vec3 & startPosition, const glm::vec3 & step, const float mass)
+	void addGranulars(const std::vector<glm::vec3> & positions, const float massPerParticle)
 	{
-		int numParticles = dimension.x * dimension.y * dimension.z;
-
-		// check if number of particles exceed num max particles or not
+		int numParticles = positions.size();
 		if (scene->numParticles + numParticles >= scene->numMaxParticles)
 		{
-			std::string message = std::string(__FILE__) + std::string(" num particles exceed num max particles");
+			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
 			throw std::exception(message.c_str());
 		}
 
@@ -617,23 +624,24 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
 		// set positions
-		initPositionBox<<<numBlocks, numThreads>>>(devPositions + scene->numParticles,
-												   devPhases + scene->numParticles,
-												   devSolidPhaseCounter,
-												   make_int3(dimension),
-												   make_float3(startPosition),
-												   make_float3(step),
-												   numParticles);
+		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+								   &(positions[0].x),
+								   numParticles * sizeof(float) * 3,
+								   cudaMemcpyHostToDevice));
 		// set masses
 		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
-												   mass,
-												   numParticles);
-		// set inv masses
+												   massPerParticle,
+												   numParticles);	
+		// set invmasses
 		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
-												   1.0f / mass,
+												   1.0f / massPerParticle,
 												   numParticles);
+		// set phases
+		setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+															  devSolidPhaseCounter,
+															  1,
+															  numParticles);
 		scene->numParticles += numParticles;
-		isNotRigidParticlesAdded = true;
 	}
 
 	void addRigidBody(const std::vector<glm::vec3> & initialPositions, const std::vector<glm::vec3> & initialPositions_CM_Origin, const float massPerParticle)
@@ -695,7 +703,6 @@ struct ParticleSolver
 		
 		scene->numParticles += numParticles;
 		scene->numRigidBodies += 1;
-		devMaxRigidBodyParticleId = scene->numParticles;
 	}
 
 	void updateGrid(int numBlocks, int numThreads)
@@ -867,9 +874,6 @@ struct ParticleSolver
 
 	void *		devTempStorage = nullptr;
 	size_t		devTempStorageSize = 0;
-
-	int			devMaxRigidBodyParticleId = 0;
-	bool		isNotRigidParticlesAdded = false;
 
 	int *			devCellId;
 	int *			devParticleId;
