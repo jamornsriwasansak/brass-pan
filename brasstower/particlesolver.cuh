@@ -16,7 +16,7 @@
 #include "scene.h"
 
 #define NUM_MAX_PARTICLE_PER_CELL 4
-#define FRICTION_STATIC 0.2f
+#define FRICTION_STATIC 0.8f
 #define FRICTION_DYNAMICS 0.8f
 #define MASS_SCALING_CONSTANT 2 // refers to k in equation (21)
 #define PARTICLE_SLEEPING_EPSILON 0.001
@@ -350,7 +350,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 				int bucketStart = cellStart[gridAddress];
 				if (bucketStart == -1) { continue; }
 
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int k = 0; k + bucketStart < numParticles; k++)
 				{
 					int gridAddress2 = sortedCellId[bucketStart + k];
 					int particleId2 = sortedParticleId[bucketStart + k];
@@ -368,7 +368,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 							float dist = sqrtf(dist2);
 							float weight1 = invMass / (invMass + invMass2);
-							float weight2 = invMass / (invMass + invMass2);
+							float weight2 = invMass2 / (invMass + invMass2);
 
 							float3 deltaXi = diff * weight1 * (2.0f * radius / dist - 1.0f);
 							float3 xiStar = deltaXi + xiPrev;
@@ -536,7 +536,7 @@ struct ParticleSolver
 {
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
 		scene(scene),
-		cellOrigin(make_float3(-4, -1, -5)),
+		cellOrigin(make_float3(-4.01, -1.01, -5.01)),
 		cellSize(make_float3(scene->radius * 2.0f)),
 		gridSize(make_int3(128))
 	{
