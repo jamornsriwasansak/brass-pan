@@ -244,7 +244,7 @@ int main()
 		renderer->update();
 		glfwPollEvents();
 
-		ImGui_ImplGlfwGL3_NewFrame();
+		/*ImGui_ImplGlfwGL3_NewFrame();
 
 		// 1. Show a simple window.
 		// Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets automatically appears in a window called "Debug".
@@ -286,11 +286,11 @@ int main()
 		// Rendering
 		int display_w, display_h;
 		glfwGetFramebufferSize(window, &display_w, &display_h);
-		glViewport(0, 0, display_w, display_h);
+		glViewport(0, 0, display_w, display_h);*/
 		/*glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
 		glClear(GL_COLOR_BUFFER_BIT);*/
-		ImGui::Render();
-		ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());		// Swap buffers
+		/*ImGui::Render();
+		ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());		// Swap buffers*/
 
 		glfwSwapBuffers(window);
 
