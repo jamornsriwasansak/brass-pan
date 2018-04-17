@@ -16,8 +16,8 @@
 #include "scene.h"
 
 #define NUM_MAX_PARTICLE_PER_CELL 4
-#define FRICTION_STATIC 0.8f
-#define FRICTION_DYNAMICS 0.8f
+#define FRICTION_STATIC 1.0f
+#define FRICTION_DYNAMICS 0.5f
 #define MASS_SCALING_CONSTANT 2 // refers to k in equation (21)
 #define PARTICLE_SLEEPING_EPSILON 0.001
 
@@ -361,16 +361,14 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 						float3 xjPrev = newPositionsPrev[particleId2];
 						float3 diff = xiPrev - xjPrev;
 						float dist2 = length2(diff);
-						float invMass2 = invMasses[particleId2];
 						if (dist2 < radius * radius * 4.0f)
 						{
-							constraintCount += 1;
-
 							float dist = sqrtf(dist2);
+							float invMass2 = invMasses[particleId2];
 							float weight1 = invMass / (invMass + invMass2);
-							float weight2 = invMass2 / (invMass + invMass2);
 
-							float3 deltaXi = diff * weight1 * (2.0f * radius / dist - 1.0f);
+							float3 projectDir = diff * (2.0f * radius / dist - 1.0f); 
+							float3 deltaXi = weight1 * projectDir;
 							float3 xiStar = deltaXi + xiPrev;
 							sumDeltaXi += deltaXi;
 
@@ -378,8 +376,10 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 							
 							if (deltaXiLength2 > radius * radius * 0.001f * 0.001f)
 							{
+								constraintCount += 1;
+								float weight2 = invMass2 / (invMass + invMass2);
 								float3 xj = positions[particleId2];
-								float3 deltaXj = -diff * weight2 * (2.0f * radius / dist - 1.0f);
+								float3 deltaXj = -weight2 * projectDir;
 								float3 xjStar = deltaXj + xjPrev;
 								float3 term1 = (xiStar - xi) - (xjStar - xj);
 								float3 n = diff / dist;
@@ -387,7 +387,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 
 								float tangentialDeltaXLength2 = length2(tangentialDeltaX);
 
-								if (tangentialDeltaXLength2 < (FRICTION_STATIC * FRICTION_STATIC) * deltaXiLength2)
+								if (tangentialDeltaXLength2 <= (FRICTION_STATIC * FRICTION_STATIC) * deltaXiLength2)
 								{
 									sumFriction -= weight1 * tangentialDeltaX;
 								}
