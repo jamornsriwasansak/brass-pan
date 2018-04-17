@@ -549,6 +549,7 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devRestDensity, scene->numMaxParticles * sizeof(float)));
 
 		// alloc rigid body
 		checkCudaErrors(cudaMalloc(&devRigidBodyParticleIdRange, scene->numMaxRigidBodies * sizeof(int2)));
@@ -562,6 +563,8 @@ struct ParticleSolver
 		// alloc phase counter
 		checkCudaErrors(cudaMalloc(&devSolidPhaseCounter, sizeof(int)));
 		checkCudaErrors(cudaMemset(devSolidPhaseCounter, 1, sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devLiquidPhaseCounter, sizeof(int)));
+		checkCudaErrors(cudaMemset(devLiquidPhaseCounter, -1, sizeof(int)));
 
 		// alloc grid accel
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
@@ -861,8 +864,10 @@ struct ParticleSolver
 	float *		devMasses;
 	float *		devInvMasses;
 	float *		devInvScaledMasses;
+	float *		devRestDensity;
 	int *		devPhases;
 	int *		devSolidPhaseCounter;
+	int *		devLiquidPhaseCounter;
 
 	int *		devSortedCellId;
 	int *		devSortedParticleId;

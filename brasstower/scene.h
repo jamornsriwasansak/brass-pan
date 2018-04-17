@@ -87,8 +87,6 @@ struct RigidBody
 struct Granulars
 {
 	std::vector<glm::vec3> positions;
-	size_t numParticles;
-
 	float massPerParticle;
 
 	static std::shared_ptr<Granulars> CreateGranularsBlock(const glm::ivec3 & dimension,
@@ -113,6 +111,32 @@ struct Granulars
 
 	Granulars()
 	{
+	}
+};
+
+struct Liquid
+{
+	std::vector<glm::vec3> positions;
+	float restDensity;
+
+	static std::shared_ptr<Liquid> CreateWaterBlock(const glm::ivec3 & dimension,
+													const glm::vec3 & startPosition,
+													const glm::vec3 & stepSize,
+													const float density)
+	{
+		std::shared_ptr<Liquid> result = std::make_shared<Liquid>();
+		result->restDensity = density;
+
+		std::vector<glm::vec3> & positions = result->positions;
+		for (int i = 0; i < dimension.x; i++)
+			for (int j = 0; j < dimension.y; j++)
+				for (int k = 0; k < dimension.z; k++)
+				{
+					glm::vec3 position = startPosition + stepSize * glm::vec3(i, j, k);
+					positions.push_back(position);
+				}
+
+		return result;
 	}
 };
 
