@@ -155,6 +155,28 @@ std::shared_ptr<Scene> initSimpleScene()
 	return scene;
 }
 
+std::shared_ptr<Scene> initFluidScene()
+{
+	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
+	scene->planes.push_back(Plane(glm::vec3(-2.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->numParticles = 0;
+	scene->numMaxParticles = 50000;
+	scene->numRigidBodies = 0;
+	scene->numMaxRigidBodies = 128;
+	scene->radius = 0.05f;
+
+	scene->pointLight.intensity = glm::vec3(5.0f);
+	scene->pointLight.position = glm::vec3(1, 5, 1);
+	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
+
+	//scene->
+		return scene;
+}
+
 __global__ void mapPositions(float4 * ssboDptr, float3 * position, const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;

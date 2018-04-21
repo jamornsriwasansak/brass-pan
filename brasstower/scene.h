@@ -114,17 +114,17 @@ struct Granulars
 	}
 };
 
-struct Liquid
+struct Fluid
 {
 	std::vector<glm::vec3> positions;
 	float restDensity;
 
-	static std::shared_ptr<Liquid> CreateWaterBlock(const glm::ivec3 & dimension,
+	static std::shared_ptr<Fluid> CreateWaterBlock(const glm::ivec3 & dimension,
 													const glm::vec3 & startPosition,
 													const glm::vec3 & stepSize,
 													const float density)
 	{
-		std::shared_ptr<Liquid> result = std::make_shared<Liquid>();
+		std::shared_ptr<Fluid> result = std::make_shared<Fluid>();
 		result->restDensity = density;
 
 		std::vector<glm::vec3> & positions = result->positions;
@@ -160,6 +160,7 @@ struct Scene
 	std::vector<Plane> planes;
 	std::vector<std::shared_ptr<RigidBody>> rigidBodies;
 	std::vector<std::shared_ptr<Granulars>> granulars; // position of solid particles (without any constraints)
+	std::vector<std::shared_ptr<Fluid>> fluids;
 
 	PointLight pointLight;
 
