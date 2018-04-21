@@ -161,8 +161,8 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
 	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
 	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
-	scene->planes.push_back(Plane(glm::vec3(-2.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(-1.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(1.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
 	scene->numParticles = 0;
 	scene->numMaxParticles = 50000;
 	scene->numRigidBodies = 0;
@@ -173,8 +173,8 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
-	//scene->
-		return scene;
+	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(10, 10, 10), glm::vec3(0, scene->radius, 0), glm::vec3(scene->radius * 2.0f), 1.0f, 20.f));
+	return scene;
 }
 
 __global__ void mapPositions(float4 * ssboDptr, float3 * position, const int numParticles)
@@ -198,7 +198,7 @@ int main()
 	cudaGLSetGLDevice(0);
 	window = InitGL(1280, 720);
 
-	std::shared_ptr<Scene> scene = initSimpleScene();
+	std::shared_ptr<Scene> scene = initFluidScene();
 	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
 	solver = new ParticleSolver(scene);
 

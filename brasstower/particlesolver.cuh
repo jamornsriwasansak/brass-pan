@@ -521,7 +521,7 @@ __device__ float poly6Kernel(float r2, float h)
 {
 	/// TODO:: precompute these
 	float h2 = h * h;
-	if (r2 <= h2 && r2 > 1e-3f)
+	if (r2 <= h2 && r2 > 1e-8f)
 	{
 		float k = 315.f / 64.f / 3.141592f / powf(h, 9.f);
 		return k * powf(h2 - r2, 3.f);
@@ -534,7 +534,7 @@ __device__ float3 gradientSpikyKernel(const float3 v, float h)
 	/// TODO:: precompute these
 	float h2 = h * h;
 	float r2 = dot(v, v);
-	if (r2 <= h2 && r2 > 1e-3f)
+	if (r2 <= h2 && r2 > 1e-8f)
 	{
 		float r = sqrtf(r2);
 		float k = -45.f / 3.141592f / powf(h, 6.f);
@@ -543,10 +543,12 @@ __device__ float3 gradientSpikyKernel(const float3 v, float h)
 	return make_float3(0.f);
 }
 
-__global__ void fluidLambda(float * __restrict__ lambda,
+__global__ void fluidLambda(float * __restrict__ lambdas,
 							const float3 * __restrict__ newPositionsPrev,
 							const float * __restrict__ masses,
-							const float * __restrict__ phases,
+							const int * __restrict__ phases,
+							const float * __restrict__ restDensities,
+							const float kernelWidth,
 							/*const int* __restrict__ sortedCellId,
 							const int* __restrict__ sortedParticleId,
 							const int* __restrict__ cellStart,
@@ -567,16 +569,50 @@ __global__ void fluidLambda(float * __restrict__ lambda,
 
 	for (int j = 0; j < numParticles; j++)
 	{
+		if (i != j && phases[j] < 0) /// TODO:: also takecare of solid
+		{
+			float3 pj = newPositionsPrev[j];
+			density += poly6Kernel(length2(pi - pj), kernelWidth);
+
+			float3 gradient = gradientSpikyKernel(pi - pj, kernelWidth);
+			gradientI += gradient;
+			sumGradient2 += dot(gradient, gradient);
+		}
+	}
+	sumGradient2 += dot(gradientI, gradientI);
+
+	// compute constraint
+	float constraint = max(density / restDensities[i] - 1.0f, 0.0f);
+	float lambda = -constraint / (sumGradient2 + 0.001f);
+	lambdas[i] = lambda;
+}
+
+__global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
+							  const float3 * __restrict__ newPositionsPrev,
+							  const float * __restrict__ lambdas,
+							  const float * __restrict__ restDensities,
+							  const int * __restrict__ phases,
+							  const float kernelWidth,
+							  const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles || phases[i] > 0) { return; }
+
+	float3 pi = newPositionsPrev[i];
+
+	float3 sum = make_float3(0.f);
+	for (int j = 0;j < numParticles;j++)
+	{
 		if (i != j && phases[j] < 0)
 		{
-			float massJ = masses[j];
 			float3 pj = newPositionsPrev[j];
-			density += massJ * poly6Kernel(length2(pi - pj), 0.1f);
+			sum += (lambdas[i] + lambdas[j]) * gradientSpikyKernel(pi - pj, kernelWidth);
 		}
 	}
 
-	// compute constraint
-	float constraint = std::max(density / 100.f - 1.0f, 0.0f);
+	float3 deltaPosition = 1.0f / restDensities[i] * sum;
+	//printf("%f %f %f\n", deltaPosition.x, deltaPosition.y, deltaPosition.z);
+	newPositionsNext[i] = pi + deltaPosition;
 }
 
 __global__ void updatePositions(float3 * __restrict__ positions,
@@ -611,7 +647,10 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
-		checkCudaErrors(cudaMalloc(&devRestDensity, scene->numMaxParticles * sizeof(float)));
+		checkCudaErrors(cudaMalloc(&devRestDensities, scene->numMaxParticles * sizeof(float)));
+
+		// set velocity
+		checkCudaErrors(cudaMemset(devVelocities, 0, scene->numMaxParticles * sizeof(float3)));
 
 		// alloc rigid body
 		checkCudaErrors(cudaMalloc(&devRigidBodyParticleIdRange, scene->numMaxRigidBodies * sizeof(int2)));
@@ -622,11 +661,9 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocksRigidBody, &numThreadsRigidBody, scene->numMaxRigidBodies);
 		setDevArr_float4<<<numBlocksRigidBody, numThreadsRigidBody>>>(devRigidBodyRotations, make_float4(0, 0, 0, 1), scene->numMaxRigidBodies);
 
-		// alloc phase counter
+		// alloc and set phase counter
 		checkCudaErrors(cudaMalloc(&devSolidPhaseCounter, sizeof(int)));
 		checkCudaErrors(cudaMemset(devSolidPhaseCounter, 1, sizeof(int)));
-		checkCudaErrors(cudaMalloc(&devFluidPhaseCounter, sizeof(int)));
-		checkCudaErrors(cudaMemset(devFluidPhaseCounter, -1, sizeof(int)));
 
 		// alloc grid accel
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
@@ -635,7 +672,8 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devSortedParticleId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devCellStart, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
 
-		checkCudaErrors(cudaMemset(devVelocities, 0, scene->numMaxParticles * sizeof(float3)));
+		// alloc fluid vars
+		checkCudaErrors(cudaMalloc(&devFluidLambdas, scene->numMaxParticles * sizeof(float)));
 
 		// start initing the scene
 		for (std::shared_ptr<RigidBody> rigidBody : scene->rigidBodies)
@@ -646,6 +684,11 @@ struct ParticleSolver
 		for (std::shared_ptr<Granulars> granulars : scene->granulars)
 		{
 			addGranulars(granulars->positions, granulars->massPerParticle);
+		}
+
+		for (std::shared_ptr<Fluid> fluids : scene->fluids)
+		{
+			addFluids(fluids->positions, fluids->massPerParticle, fluids->restDensity);
 		}
 	}
 
@@ -770,9 +813,9 @@ struct ParticleSolver
 		scene->numRigidBodies += 1;
 	}
 
-	void addFluids(const std::vector<glm::vec3> & positions, const float massPerParticle)
+	void addFluids(const std::vector<glm::vec3> & positions, const float massPerParticle, const float restDensity)
 	{
-				int numParticles = positions.size();
+		int numParticles = positions.size();
 		if (scene->numParticles + numParticles >= scene->numMaxParticles)
 		{
 			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
@@ -799,6 +842,10 @@ struct ParticleSolver
 		setDevArr_int<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
 												 -1,
 												 numParticles);
+		// set rest density
+		setDevArr_float<<<numBlocks, numThreads>>>(devRestDensities + scene->numParticles,
+												   restDensity,
+												   numParticles);
 		scene->numParticles += numParticles;
 	}
 
@@ -919,6 +966,24 @@ struct ParticleSolver
 																				   scene->numParticles,
 																				   scene->radius);
 					std::swap(devTempNewPositions, devNewPositions);
+
+					// fluid
+					fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
+														   devNewPositions,
+														   devMasses,
+														   devPhases,
+														   devRestDensities,
+														   0.1f * 2.f, // kernel width = kernel radius * 2.0f
+														   scene->numParticles);
+					fluidPosition<<<numBlocks, numThreads>>>(devTempNewPositions,
+															 devNewPositions,
+															 devFluidLambdas,
+															 devRestDensities,
+															 devPhases,
+															 0.1f * 2.f, // kernel width = kernel radius * 2.f;
+															 scene->numParticles);
+					std::swap(devTempNewPositions, devNewPositions);
+
 					// solve all rigidbody constraints
 					if (scene->numRigidBodies > 0)
 					{ 
@@ -958,10 +1023,11 @@ struct ParticleSolver
 	float *		devMasses;
 	float *		devInvMasses;
 	float *		devInvScaledMasses;
-	float *		devRestDensity;
+	float *		devRestDensities;
 	int *		devPhases;
 	int *		devSolidPhaseCounter;
 
+	float *		devFluidLambdas;
 	int *		devSortedCellId;
 	int *		devSortedParticleId;
 

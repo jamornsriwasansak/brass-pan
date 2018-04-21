@@ -118,14 +118,17 @@ struct Fluid
 {
 	std::vector<glm::vec3> positions;
 	float restDensity;
+	float massPerParticle;
 
-	static std::shared_ptr<Fluid> CreateWaterBlock(const glm::ivec3 & dimension,
-													const glm::vec3 & startPosition,
-													const glm::vec3 & stepSize,
-													const float density)
+	static std::shared_ptr<Fluid> CreateFluidBlock(const glm::ivec3 & dimension,
+												   const glm::vec3 & startPosition,
+												   const glm::vec3 & stepSize,
+												   const float massPerParticle,
+												   const float restDensity)
 	{
 		std::shared_ptr<Fluid> result = std::make_shared<Fluid>();
-		result->restDensity = density;
+		result->massPerParticle = massPerParticle;
+		result->restDensity = restDensity;
 
 		std::vector<glm::vec3> & positions = result->positions;
 		for (int i = 0; i < dimension.x; i++)
