@@ -517,6 +517,68 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	}
 }
 
+__device__ float poly6Kernel(float r2, float h)
+{
+	/// TODO:: precompute these
+	float h2 = h * h;
+	if (r2 <= h2 && r2 > 1e-3f)
+	{
+		float k = 315.f / 64.f / 3.141592f / powf(h, 9.f);
+		return k * powf(h2 - r2, 3.f);
+	}
+	return 0.f;
+}
+
+__device__ float3 gradientSpikyKernel(const float3 v, float h)
+{
+	/// TODO:: precompute these
+	float h2 = h * h;
+	float r2 = dot(v, v);
+	if (r2 <= h2 && r2 > 1e-3f)
+	{
+		float r = sqrtf(r2);
+		float k = -45.f / 3.141592f / powf(h, 6.f);
+		return k * powf(h - r, 2.f) * v / r;
+	}
+	return make_float3(0.f);
+}
+
+__global__ void fluidLambda(float * __restrict__ lambda,
+							const float3 * __restrict__ newPositionsPrev,
+							const float * __restrict__ masses,
+							const float * __restrict__ phases,
+							/*const int* __restrict__ sortedCellId,
+							const int* __restrict__ sortedParticleId,
+							const int* __restrict__ cellStart,
+							const float3 cellOrigin,
+							const float3 cellSize,
+							const int3 gridSize,*/
+							const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles || phases[i] > 0) { return; }
+
+	float3 pi = newPositionsPrev[i];
+
+	// compute density and gradient of constraint
+	float density = 0.f;
+	float3 gradientI = make_float3(0.f);
+	float sumGradient2 = 0.f;
+
+	for (int j = 0; j < numParticles; j++)
+	{
+		if (i != j && phases[j] < 0)
+		{
+			float massJ = masses[j];
+			float3 pj = newPositionsPrev[j];
+			density += massJ * poly6Kernel(length2(pi - pj), 0.1f);
+		}
+	}
+
+	// compute constraint
+	float constraint = std::max(density / 100.f - 1.0f, 0.0f);
+}
+
 __global__ void updatePositions(float3 * __restrict__ positions,
 								const float3 * __restrict__ newPositions,
 								const float threshold,
@@ -563,8 +625,8 @@ struct ParticleSolver
 		// alloc phase counter
 		checkCudaErrors(cudaMalloc(&devSolidPhaseCounter, sizeof(int)));
 		checkCudaErrors(cudaMemset(devSolidPhaseCounter, 1, sizeof(int)));
-		checkCudaErrors(cudaMalloc(&devLiquidPhaseCounter, sizeof(int)));
-		checkCudaErrors(cudaMemset(devLiquidPhaseCounter, -1, sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devFluidPhaseCounter, sizeof(int)));
+		checkCudaErrors(cudaMemset(devFluidPhaseCounter, -1, sizeof(int)));
 
 		// alloc grid accel
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
@@ -706,6 +768,38 @@ struct ParticleSolver
 		
 		scene->numParticles += numParticles;
 		scene->numRigidBodies += 1;
+	}
+
+	void addFluids(const std::vector<glm::vec3> & positions, const float massPerParticle)
+	{
+				int numParticles = positions.size();
+		if (scene->numParticles + numParticles >= scene->numMaxParticles)
+		{
+			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
+			throw std::exception(message.c_str());
+		}
+
+		int numBlocks, numThreads;
+		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
+
+		// set positions
+		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+								   &(positions[0].x),
+								   numParticles * sizeof(float) * 3,
+								   cudaMemcpyHostToDevice));
+		// set masses
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
+												   massPerParticle,
+												   numParticles);	
+		// set invmasses
+		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
+												   1.0f / massPerParticle,
+												   numParticles);
+		// fluid phase is always -1
+		setDevArr_int<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+												 -1,
+												 numParticles);
+		scene->numParticles += numParticles;
 	}
 
 	void updateGrid(int numBlocks, int numThreads)
@@ -867,7 +961,6 @@ struct ParticleSolver
 	float *		devRestDensity;
 	int *		devPhases;
 	int *		devSolidPhaseCounter;
-	int *		devLiquidPhaseCounter;
 
 	int *		devSortedCellId;
 	int *		devSortedParticleId;
