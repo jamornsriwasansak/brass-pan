@@ -15,11 +15,11 @@
 #include "cuda/cudaglm.cuh"
 #include "scene.h"
 
-#define NUM_MAX_PARTICLE_PER_CELL 4
-#define FRICTION_STATIC 1.0f
-#define FRICTION_DYNAMICS 0.5f
+#define NUM_MAX_PARTICLE_PER_CELL 15
+#define FRICTION_STATIC 0.0f
+#define FRICTION_DYNAMICS 0.0f
 #define MASS_SCALING_CONSTANT 2 // refers to k in equation (21)
-#define PARTICLE_SLEEPING_EPSILON 0.001
+#define PARTICLE_SLEEPING_EPSILON 0.00
 
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
@@ -521,7 +521,7 @@ __device__ float poly6Kernel(float r2, float h)
 {
 	/// TODO:: precompute these
 	float h2 = h * h;
-	if (r2 <= h2 && r2 > 1e-8f)
+	if (r2 <= h2 && r2 > 0.f)
 	{
 		float k = 315.f / 64.f / 3.141592f / powf(h, 9.f);
 		return k * powf(h2 - r2, 3.f);
@@ -534,7 +534,7 @@ __device__ float3 gradientSpikyKernel(const float3 v, float h)
 	/// TODO:: precompute these
 	float h2 = h * h;
 	float r2 = dot(v, v);
-	if (r2 <= h2 && r2 > 1e-8f)
+	if (r2 <= h2 && r2 > 0.f)
 	{
 		float r = sqrtf(r2);
 		float k = -45.f / 3.141592f / powf(h, 6.f);
@@ -548,13 +548,13 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 							const float * __restrict__ masses,
 							const int * __restrict__ phases,
 							const float * __restrict__ restDensities,
-							const float kernelWidth,
-							/*const int* __restrict__ sortedCellId,
+							const float kernelRadius,
+							const int* __restrict__ sortedCellId,
 							const int* __restrict__ sortedParticleId,
 							const int* __restrict__ cellStart,
 							const float3 cellOrigin,
 							const float3 cellSize,
-							const int3 gridSize,*/
+							const int3 gridSize,
 							const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -567,23 +567,44 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 	float3 gradientI = make_float3(0.f);
 	float sumGradient2 = 0.f;
 
-	for (int j = 0; j < numParticles; j++)
-	{
-		if (i != j && phases[j] < 0) /// TODO:: also takecare of solid
-		{
-			float3 pj = newPositionsPrev[j];
-			density += poly6Kernel(length2(pi - pj), kernelWidth);
+	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
+	int3 start = centerGridPos - 1;
+	int3 end = centerGridPos + 1;
 
-			float3 gradient = gradientSpikyKernel(pi - pj, kernelWidth);
-			gradientI += gradient;
-			sumGradient2 += dot(gradient, gradient);
-		}
-	}
+	int constraintCount = 0;
+
+	for (int z = start.z; z <= end.z; z++)
+		for (int y = start.y; y <= end.y; y++)
+			for (int x = start.x; x <= end.x; x++)
+			{
+				int3 gridPos = make_int3(x, y, z);
+				int gridAddress = calcGridAddress(gridPos, gridSize);
+				int bucketStart = cellStart[gridAddress];
+				if (bucketStart == -1) { continue; }
+
+				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				{
+					int gridAddress2 = sortedCellId[bucketStart + k];
+					if (gridAddress2 != gridAddress) { break; }
+
+					int j = sortedParticleId[bucketStart + k];
+					if (i != j && phases[j] < 0) /// TODO:: also takecare of solid
+					{
+						float3 pj = newPositionsPrev[j];
+						density += poly6Kernel(length2(pi - pj), kernelRadius);
+
+						float3 gradient = gradientSpikyKernel(pi - pj, kernelRadius);
+						gradientI += gradient;
+						sumGradient2 += dot(gradient, gradient);
+					}
+				}
+			}
+
 	sumGradient2 += dot(gradientI, gradientI);
 
 	// compute constraint
 	float constraint = max(density / restDensities[i] - 1.0f, 0.0f);
-	float lambda = -constraint / (sumGradient2 + 0.001f);
+	float lambda = -constraint / (sumGradient2 + 6.0f);
 	lambdas[i] = lambda;
 }
 
@@ -592,7 +613,13 @@ __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 							  const float * __restrict__ lambdas,
 							  const float * __restrict__ restDensities,
 							  const int * __restrict__ phases,
-							  const float kernelWidth,
+							  const float kernelRadius,
+							  const int* __restrict__ sortedCellId,
+							  const int* __restrict__ sortedParticleId,
+							  const int* __restrict__ cellStart,
+							  const float3 cellOrigin,
+							  const float3 cellSize,
+							  const int3 gridSize,
 							  const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -601,33 +628,170 @@ __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 	float3 pi = newPositionsPrev[i];
 
 	float3 sum = make_float3(0.f);
-	for (int j = 0;j < numParticles;j++)
-	{
-		if (i != j && phases[j] < 0)
-		{
-			float3 pj = newPositionsPrev[j];
-			sum += (lambdas[i] + lambdas[j]) * gradientSpikyKernel(pi - pj, kernelWidth);
-		}
-	}
+	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
+	int3 start = centerGridPos - 1;
+	int3 end = centerGridPos + 1;
+
+	int constraintCount = 0;
+
+	for (int z = start.z; z <= end.z; z++)
+		for (int y = start.y; y <= end.y; y++)
+			for (int x = start.x; x <= end.x; x++)
+			{
+				int3 gridPos = make_int3(x, y, z);
+				int gridAddress = calcGridAddress(gridPos, gridSize);
+				int bucketStart = cellStart[gridAddress];
+				if (bucketStart == -1) { continue; }
+
+				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				{
+					int gridAddress2 = sortedCellId[bucketStart + k];
+					if (gridAddress2 != gridAddress) { break; }
+
+					int j = sortedParticleId[bucketStart + k];
+					if (i != j && phases[j] < 0)
+					{
+						float3 pj = newPositionsPrev[j];
+						sum += (lambdas[i] + lambdas[j]) * gradientSpikyKernel(pi - pj, kernelRadius);
+					}
+				}
+			}
 
 	float3 deltaPosition = 1.0f / restDensities[i] * sum;
 	//printf("%f %f %f\n", deltaPosition.x, deltaPosition.y, deltaPosition.z);
 	newPositionsNext[i] = pi + deltaPosition;
 }
 
+/// TODO:: optimize this by plug it in last loop of fluidPosition
+__global__ void fluidOmega(float3 * __restrict__ omegas,
+						   const float3 * __restrict__ velocities,
+						   const float3 * __restrict__ newPositions,
+						   const int * __restrict__ phases,
+						   const float kernelRadius,
+						   const int* __restrict__ sortedCellId,
+						   const int* __restrict__ sortedParticleId,
+						   const int* __restrict__ cellStart,
+						   const float3 cellOrigin,
+						   const float3 cellSize,
+						   const int3 gridSize,
+						   const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles || phases[i] > 0) { return; }
+
+	float3 pi = newPositions[i];
+	float3 vi = velocities[i];
+
+	float3 omegai = make_float3(0.f);
+	int3 centerGridPos = calcGridPos(newPositions[i], cellOrigin, cellSize);
+	int3 start = centerGridPos - 1;
+	int3 end = centerGridPos + 1;
+
+	int constraintCount = 0;
+
+	for (int z = start.z; z <= end.z; z++)
+		for (int y = start.y; y <= end.y; y++)
+			for (int x = start.x; x <= end.x; x++)
+			{
+				int3 gridPos = make_int3(x, y, z);
+				int gridAddress = calcGridAddress(gridPos, gridSize);
+				int bucketStart = cellStart[gridAddress];
+				if (bucketStart == -1) { continue; }
+
+				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				{
+					int gridAddress2 = sortedCellId[bucketStart + k];
+					if (gridAddress2 != gridAddress) { break; }
+
+					int j = sortedParticleId[bucketStart + k];
+					if (i != j && phases[j] < 0)
+					{
+						float3 pj = newPositions[j];
+						float3 vj = velocities[j];
+						omegai += cross(vj - vi, gradientSpikyKernel(pi - pj, kernelRadius));
+					}
+				}
+			}
+	
+	omegas[i] = omegai;
+}
+
+__global__ void fluidVorticity(float3 * __restrict__ velocities,
+							   const float3 * __restrict__ omegas,
+							   const float3 * __restrict__ newPositions,
+							   const float scalingFactor,
+							   const int * __restrict__ phases,
+							   const float kernelRadius,
+							   const int* __restrict__ sortedCellId,
+							   const int* __restrict__ sortedParticleId,
+							   const int* __restrict__ cellStart,
+							   const float3 cellOrigin,
+							   const float3 cellSize,
+							   const int3 gridSize,
+							   const int numParticles,
+							   const float deltaTime)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles || phases[i] > 0) { return; }
+
+	float3 omegai = omegas[i];
+	float3 pi = newPositions[i];
+	int3 centerGridPos = calcGridPos(newPositions[i], cellOrigin, cellSize);
+	int3 start = centerGridPos - 1;
+	int3 end = centerGridPos + 1;
+
+	int constraintCount = 0;
+
+	float3 eta = make_float3(0.f);
+
+	for (int z = start.z; z <= end.z; z++)
+		for (int y = start.y; y <= end.y; y++)
+			for (int x = start.x; x <= end.x; x++)
+			{
+				int3 gridPos = make_int3(x, y, z);
+				int gridAddress = calcGridAddress(gridPos, gridSize);
+				int bucketStart = cellStart[gridAddress];
+				if (bucketStart == -1) { continue; }
+
+				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				{
+					int gridAddress2 = sortedCellId[bucketStart + k];
+					if (gridAddress2 != gridAddress) { break; }
+
+					int j = sortedParticleId[bucketStart + k];
+					if (i != j && phases[j] < 0)
+					{
+						float3 pj = newPositions[j];
+						eta += length(omegas[j]) * gradientSpikyKernel(pi - pj, kernelRadius);
+					}
+				}
+			}
+
+	if (length2(eta) > 1e-3f)
+	{
+		float3 normal = normalize(eta);
+
+		/// TODO:: also have to be devided by mass
+		//printf("%f %f %f\n", cross(normal, omegai));
+		velocities[i] += scalingFactor * cross(normal, omegai) * deltaTime;
+	}
+}
+
 __global__ void updatePositions(float3 * __restrict__ positions,
 								const float3 * __restrict__ newPositions,
+								const int * __restrict__ phases,
 								const float threshold,
 								const int numParticles)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= numParticles) { return; }
 
+	const int phase = phases[i];
 	const float3 x = positions[i];
 	const float3 newX = newPositions[i];
 
 	const float dist2 = length2(newX - x);
-	positions[i] = (dist2 >= threshold * threshold) ? newX : x;
+	positions[i] = (dist2 >= threshold * threshold || phases[i] < 0) ? newX : x;
 }
 
 struct ParticleSolver
@@ -648,6 +812,7 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devRestDensities, scene->numMaxParticles * sizeof(float)));
+		checkCudaErrors(cudaMalloc(&devOmegas, scene->numMaxParticles * sizeof(float3)));
 
 		// set velocity
 		checkCudaErrors(cudaMemset(devVelocities, 0, scene->numMaxParticles * sizeof(float3)));
@@ -938,7 +1103,7 @@ struct ParticleSolver
 				// compute grid
 				updateGrid(numBlocks, numThreads);
 
-				for (int j = 0; j < 5; j++)
+				for (int j = 0; j < 2; j++)
 				{
 					// solving all plane collisions
 					for (const Plane & plane : scene->planes)
@@ -951,7 +1116,7 @@ struct ParticleSolver
 																					scene->radius);
 					}
 
-					// solving all particles collisions
+					/*// solving all particles collisions
 					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devTempNewPositions,
 																				   devNewPositions,
 																				   devPositions,
@@ -964,8 +1129,8 @@ struct ParticleSolver
 																				   cellSize,
 																				   gridSize,
 																				   scene->numParticles,
-																				   scene->radius);
-					std::swap(devTempNewPositions, devNewPositions);
+																				   scene->radius);*/
+					//std::swap(devTempNewPositions, devNewPositions);
 
 					// fluid
 					fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
@@ -973,14 +1138,26 @@ struct ParticleSolver
 														   devMasses,
 														   devPhases,
 														   devRestDensities,
-														   0.1f * 2.f, // kernel width = kernel radius * 2.0f
+														   scene->radius * 2.0f, // kernel radius
+														   devSortedCellId,
+														   devSortedParticleId,
+														   devCellStart,
+														   cellOrigin,
+														   cellSize,
+														   gridSize,
 														   scene->numParticles);
 					fluidPosition<<<numBlocks, numThreads>>>(devTempNewPositions,
 															 devNewPositions,
 															 devFluidLambdas,
 															 devRestDensities,
 															 devPhases,
-															 0.1f * 2.f, // kernel width = kernel radius * 2.f;
+															 scene->radius * 2.0f, // kernel radius
+															 devSortedCellId,
+															 devSortedParticleId,
+															 devCellStart,
+															 cellOrigin,
+															 cellSize,
+															 gridSize,
 															 scene->numParticles);
 					std::swap(devTempNewPositions, devNewPositions);
 
@@ -1002,8 +1179,38 @@ struct ParticleSolver
 													  scene->numParticles,
 													  1.0f / subDeltaTime);
 
-			//std::swap(devNewPositions, devPositions); // update position
-			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
+			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, devPhases, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
+
+			// vorticity confinement part 1.
+			fluidOmega<<<numBlocks, numThreads>>>(devOmegas,
+												  devVelocities,
+												  devNewPositions,
+												  devPhases,
+												  scene->radius * 2.0f,
+												  devSortedCellId,
+												  devSortedParticleId,
+												  devCellStart,
+												  cellOrigin,
+												  cellSize,
+												  gridSize,
+												  scene->numParticles);
+
+			// vorticity confinement part 2.
+			fluidVorticity<<<numBlocks, numThreads>>>(devVelocities,
+													  devOmegas,
+													  devNewPositions,
+													  0.0000f,
+													  devPhases,
+													  scene->radius * 2.0f,
+													  devSortedCellId,
+													  devSortedParticleId,
+													  devCellStart,
+													  cellOrigin,
+													  cellSize,
+													  gridSize,
+													  scene->numParticles,
+													  subDeltaTime);
+
 		}
 
 		// we need to make picked particle immovable
@@ -1026,6 +1233,7 @@ struct ParticleSolver
 	float *		devRestDensities;
 	int *		devPhases;
 	int *		devSolidPhaseCounter;
+	float3 *	devOmegas;
 
 	float *		devFluidLambdas;
 	int *		devSortedCellId;

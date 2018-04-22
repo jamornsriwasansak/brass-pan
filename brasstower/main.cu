@@ -158,22 +158,24 @@ std::shared_ptr<Scene> initSimpleScene()
 std::shared_ptr<Scene> initFluidScene()
 {
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	scene->radius = 0.05f;
+
 	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
-	scene->planes.push_back(Plane(glm::vec3(-1.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(Plane(glm::vec3(1.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.1f), glm::normalize(glm::vec3(0, 0, 1))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, 3.2f), glm::normalize(glm::vec3(0, 0, -1))));
+	scene->planes.push_back(Plane(glm::vec3(-3.0 - scene->radius, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(6.0 - scene->radius, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
 	scene->numParticles = 0;
-	scene->numMaxParticles = 50000;
+	scene->numMaxParticles = 60000;
 	scene->numRigidBodies = 0;
 	scene->numMaxRigidBodies = 128;
-	scene->radius = 0.05f;
 
 	scene->pointLight.intensity = glm::vec3(5.0f);
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
-	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(10, 10, 10), glm::vec3(0, scene->radius, 0), glm::vec3(scene->radius * 2.0f), 1.0f, 20.f));
+	// mass per particle unimplemented
+	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(31, 62, 31), glm::vec3(-3, scene->radius, 0), glm::vec3(scene->radius * 2.0f), 1.0f, 6378.0));
 	return scene;
 }
 
