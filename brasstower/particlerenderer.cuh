@@ -14,64 +14,6 @@
 #include "mesh.h"
 #include "scene.h"
 
-struct Camera
-{
-	static inline glm::vec3 SphericalToWorld(const glm::vec2 & thetaPhi)
-	{
-		const float & phi = thetaPhi.x;
-		const float & theta = thetaPhi.y;
-		const float sinphi = std::sin(phi);
-		const float cosphi = std::cos(phi);
-		const float sintheta = std::sin(theta);
-		const float costheta = std::cos(theta);
-		return glm::vec3(costheta * sinphi, cosphi, sintheta * sinphi);
-	}
-
-	static inline glm::vec2 WorldToSpherical(const glm::vec3 & pos)
-	{
-		const float phi = std::atan2(pos.z, pos.x);
-		const float numerator = std::sqrt(pos.x * pos.x + pos.z * pos.z);
-		const float theta = std::atan2(numerator, pos.y);
-		return glm::vec2(theta, phi);
-	}
-
-	Camera(const glm::vec3 & pos, const glm::vec3 & lookAt, const float fovy, const float aspectRatio):
-		pos(pos),
-		dir(glm::normalize(lookAt - pos)),
-		thetaPhi(WorldToSpherical(glm::normalize(lookAt - pos))),
-		up(glm::vec3(0.0f, 1.0f, 0.0f)),
-		fovY(fovy),
-		aspectRatio(aspectRatio)
-	{}
-
-	void shift(const glm::vec3 & move)
-	{
-		const glm::vec3 & mBasisZ = dir;
-		const glm::vec3 & mBasisX = glm::normalize(glm::cross(up, mBasisZ));
-		pos += mBasisZ * move.z + mBasisX * move.x + up * move.y;
-	}
-
-	void rotate(const glm::vec2 & rotation)
-	{
-		thetaPhi += rotation;
-		dir = SphericalToWorld(thetaPhi);
-	}
-
-	glm::mat4 vpMatrix()
-	{
-		glm::mat4 viewMatrix = glm::lookAt(pos, dir + pos, glm::vec3(0, 1, 0));
-		glm::mat4 projMatrix = glm::perspective(fovY, aspectRatio, 0.05f, 100.0f);
-		return projMatrix * viewMatrix;
-	}
-
-	float fovY;
-	float aspectRatio;
-	glm::vec3 pos;
-	glm::vec2 thetaPhi;
-	glm::vec3 dir;
-	glm::vec3 up;
-};
-
 static GLFWwindow* InitGL(const size_t width, const size_t height)
 {
 	if (!glfwInit())
@@ -109,7 +51,6 @@ struct ParticleRenderer
 {
 	ParticleRenderer(const glm::uvec2 & resolution, const std::shared_ptr<Scene> & scene):
 		resolution(resolution),
-		camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)resolution.x / (float)resolution.y),
 		scene(scene)
 	{
 		glGenVertexArrays(1, &globalVaoHandle);
@@ -323,7 +264,7 @@ struct ParticleRenderer
 
 	int queryParticleColorCode(const glm::uvec2 & pos)
 	{
-		glm::mat4 cameraVpMatrix = camera.vpMatrix();
+		glm::mat4 cameraVpMatrix = scene->camera.vpMatrix();
 		glBindFramebuffer(GL_FRAMEBUFFER, particlesColorCodeFramebufferHandle);
 		// set to max
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -337,7 +278,7 @@ struct ParticleRenderer
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 			particlesColorCodeProgram_uMVPMatrix->setMat4(cameraVpMatrix);
 			particlesColorCodeProgram_uRadius->setFloat(scene->radius);
-			particlesColorCodeProgram_uCameraPosition->setVec3(camera.pos);
+			particlesColorCodeProgram_uCameraPosition->setVec3(scene->camera.pos);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, particlePositionsSsboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
 			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
@@ -382,7 +323,7 @@ struct ParticleRenderer
 		glBindFramebuffer(GL_FRAMEBUFFER, NULL);
 		glViewport(0, 0, 1280, 720);
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-		glm::mat4 cameraVpMatrix = camera.vpMatrix();
+		glm::mat4 cameraVpMatrix = scene->camera.vpMatrix();
 
 		// render particles
 		{
@@ -392,7 +333,7 @@ struct ParticleRenderer
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 			particlesDrawingProgram_uMVPMatrix->setMat4(cameraVpMatrix);
 			particlesDrawingProgram_uRadius->setFloat(scene->radius);
-			particlesDrawingProgram_uCameraPosition->setVec3(camera.pos);
+			particlesDrawingProgram_uCameraPosition->setVec3(scene->camera.pos);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, particlePositionsSsboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
 			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
@@ -492,7 +433,7 @@ struct ParticleRenderer
 
 	const std::shared_ptr<Scene>	scene;
 	const glm::uvec2				resolution;
-	Camera							camera;
+	const std::shared_ptr<Camera>	camera;
 	GLuint							particlePositionsSsboBuffer;
 	cudaGraphicsResource_t			particlePositionsSsboGraphicsRes;
 	GLuint							rigidBodyMatricesSsboBuffer;

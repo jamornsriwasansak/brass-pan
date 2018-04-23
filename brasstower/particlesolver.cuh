@@ -592,7 +592,6 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 					{
 						float3 pj = newPositionsPrev[j];
 						density += poly6Kernel(length2(pi - pj), kernelRadius);
-
 						float3 gradient = gradientSpikyKernel(pi - pj, kernelRadius);
 						gradientI += gradient;
 						sumGradient2 += dot(gradient, gradient);
@@ -1182,7 +1181,7 @@ struct ParticleSolver
 			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, devPhases, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
 
 			// vorticity confinement part 1.
-			fluidOmega<<<numBlocks, numThreads>>>(devOmegas,
+			/*fluidOmega<<<numBlocks, numThreads>>>(devOmegas,
 												  devVelocities,
 												  devNewPositions,
 												  devPhases,
@@ -1199,7 +1198,7 @@ struct ParticleSolver
 			fluidVorticity<<<numBlocks, numThreads>>>(devVelocities,
 													  devOmegas,
 													  devNewPositions,
-													  0.0000f,
+													  0.0005f,
 													  devPhases,
 													  scene->radius * 2.0f,
 													  devSortedCellId,
@@ -1209,7 +1208,7 @@ struct ParticleSolver
 													  cellSize,
 													  gridSize,
 													  scene->numParticles,
-													  subDeltaTime);
+													  subDeltaTime);*/
 
 		}
 

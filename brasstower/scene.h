@@ -143,6 +143,66 @@ struct Fluid
 	}
 };
 
+struct Camera
+{
+	Camera() {}
+
+	static inline glm::vec3 SphericalToWorld(const glm::vec2 & thetaPhi)
+	{
+		const float & phi = thetaPhi.x;
+		const float & theta = thetaPhi.y;
+		const float sinphi = std::sin(phi);
+		const float cosphi = std::cos(phi);
+		const float sintheta = std::sin(theta);
+		const float costheta = std::cos(theta);
+		return glm::vec3(costheta * sinphi, cosphi, sintheta * sinphi);
+	}
+
+	static inline glm::vec2 WorldToSpherical(const glm::vec3 & pos)
+	{
+		const float phi = std::atan2(pos.z, pos.x);
+		const float numerator = std::sqrt(pos.x * pos.x + pos.z * pos.z);
+		const float theta = std::atan2(numerator, pos.y);
+		return glm::vec2(theta, phi);
+	}
+
+	Camera(const glm::vec3 & pos, const glm::vec3 & lookAt, const float fovy, const float aspectRatio):
+		pos(pos),
+		dir(glm::normalize(lookAt - pos)),
+		thetaPhi(WorldToSpherical(glm::normalize(lookAt - pos))),
+		up(glm::vec3(0.0f, 1.0f, 0.0f)),
+		fovY(fovy),
+		aspectRatio(aspectRatio)
+	{}
+
+	void shift(const glm::vec3 & move)
+	{
+		const glm::vec3 & mBasisZ = dir;
+		const glm::vec3 & mBasisX = glm::normalize(glm::cross(up, mBasisZ));
+		pos += mBasisZ * move.z + mBasisX * move.x + up * move.y;
+	}
+
+	void rotate(const glm::vec2 & rotation)
+	{
+		thetaPhi += rotation;
+		dir = SphericalToWorld(thetaPhi);
+	}
+
+	glm::mat4 vpMatrix()
+	{
+		glm::mat4 viewMatrix = glm::lookAt(pos, dir + pos, glm::vec3(0, 1, 0));
+		glm::mat4 projMatrix = glm::perspective(fovY, aspectRatio, 0.05f, 100.0f);
+		return projMatrix * viewMatrix;
+	}
+
+	float fovY;
+	float aspectRatio;
+	glm::vec3 pos;
+	glm::vec2 thetaPhi;
+	glm::vec3 dir;
+	glm::vec3 up;
+};
+
 struct PointLight
 {
 	glm::mat4 shadowMatrix()
@@ -160,7 +220,11 @@ struct PointLight
 
 struct Scene
 {
+	Scene()
+	{}
+
 	std::vector<Plane> planes;
+	Camera camera;
 	std::vector<std::shared_ptr<RigidBody>> rigidBodies;
 	std::vector<std::shared_ptr<Granulars>> granulars; // position of solid particles (without any constraints)
 	std::vector<std::shared_ptr<Fluid>> fluids;

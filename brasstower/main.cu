@@ -26,6 +26,10 @@
 #include "particlerenderer.cuh"
 #include "particlesolver.cuh"
 
+const float windowWidth = 1280;
+const float windowHeight = 720;
+
+std::shared_ptr<Scene> scene;
 GLFWwindow * window;
 ParticleRenderer * renderer;
 ParticleSolver * solver;
@@ -71,7 +75,7 @@ void updateControl()
 			rotation += (mousePos - prevMousePos);
 
 		prevMousePos = mousePos;
-		renderer->camera.rotate(glm::vec2(rotation.y, rotation.x) * glm::vec2(0.005f, 0.005f));
+		scene->camera.rotate(glm::vec2(rotation.y, rotation.x) * glm::vec2(0.005f, 0.005f));
 	}
 
 	// key control
@@ -91,7 +95,7 @@ void updateControl()
 			control -= glm::vec3(0.f, 1.f, 0.f);
 		float length = glm::length(control);
 		control = length > 0 ? control / length : control;
-		renderer->camera.shift(control * 0.1f);
+		scene->camera.shift(control * 0.1f);
 	}
 }
 
@@ -100,13 +104,14 @@ void computePickedParticlePosition(glm::vec3 * particlePosition, glm::vec3 * par
 	glm::vec3 pickedParticlePosition = solver->getParticlePosition(currentPickingObject);
 
 	// compute space that allows the object to be moved
-	float d = glm::dot(pickedParticlePosition - renderer->camera.pos, renderer->camera.dir);
-	glm::vec3 spanOrigin = renderer->camera.pos + d * renderer->camera.dir;
-	glm::vec3 spanBasisZ = glm::normalize(-renderer->camera.dir);
+	Camera & camera = scene->camera;
+	float d = glm::dot(pickedParticlePosition - camera.pos, camera.dir);
+	glm::vec3 spanOrigin = camera.pos + d * camera.dir;
+	glm::vec3 spanBasisZ = glm::normalize(-camera.dir);
 	glm::vec3 spanBasisX = glm::normalize(glm::cross(glm::vec3(0, 1, 0), spanBasisZ));
 	glm::vec3 spanBasisY = glm::normalize(glm::cross(spanBasisZ, spanBasisX));
-	float spanYSize = d * std::tan(renderer->camera.fovY * 0.5f);
-	float spanXSize = spanYSize * renderer->camera.aspectRatio;
+	float spanYSize = d * std::tan(camera.fovY * 0.5f);
+	float spanXSize = spanYSize * camera.aspectRatio;
 	glm::vec3 newPickedParticlePosition = spanOrigin
 		+ (currentPickingObjectScreenCoord.x - 0.5f) * 2.0f * spanBasisX * spanXSize
 		+ (0.5f - currentPickingObjectScreenCoord.y) * 2.0f * spanBasisY * spanYSize;
@@ -145,6 +150,8 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
+	scene->camera = Camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight),
+
 	//scene->granulars.push_back(glm::vec3(1, 1, 1));
 	scene->granulars.push_back(Granulars::CreateGranularsBlock(glm::ivec3(30, 50, 30), glm::vec3(-6, scene->radius, -6), glm::vec3(scene->radius * 2.0f), 1.0f));
 	/*scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 2.0f));
@@ -160,11 +167,22 @@ std::shared_ptr<Scene> initFluidScene()
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
 	scene->radius = 0.05f;
 
+	const unsigned int width = 15;
+	const unsigned int depth = 15;
+	const unsigned int height = 20;
+	const float containerWidth = (width + 1) * scene->radius * 2.0 * 5.0;
+	const float containerDepth = (depth + 1) * scene->radius * 2.0;
+	const float containerHeight = 4.0;
+	const float diam = 2.0 * scene->radius;
+	const float startX = -0.5*containerWidth + diam;
+	const float startY = diam;
+	const float startZ = -0.5*containerDepth + diam;
+
 	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.1f), glm::normalize(glm::vec3(0, 0, 1))));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, 3.2f), glm::normalize(glm::vec3(0, 0, -1))));
-	scene->planes.push_back(Plane(glm::vec3(-3.0 - scene->radius, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(Plane(glm::vec3(6.0 - scene->radius, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, -containerDepth / 2.0f), glm::normalize(glm::vec3(0, 0, 1))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, containerDepth / 2.0f), glm::normalize(glm::vec3(0, 0, -1))));
+	scene->planes.push_back(Plane(glm::vec3(-containerWidth / 2.0f, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(containerWidth / 2.0f, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
 	scene->numParticles = 0;
 	scene->numMaxParticles = 60000;
 	scene->numRigidBodies = 0;
@@ -174,8 +192,10 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
+	scene->camera = Camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight),
+
 	// mass per particle unimplemented
-	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(31, 62, 31), glm::vec3(-3, scene->radius, 0), glm::vec3(scene->radius * 2.0f), 1.0f, 6378.0));
+	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 1.0f, 1000.0));
 	return scene;
 }
 
@@ -198,10 +218,10 @@ __global__ void mapMatrices(matrix4 * matrices, quaternion * quaternions, float3
 int main()
 {
 	cudaGLSetGLDevice(0);
-	window = InitGL(1280, 720);
+	window = InitGL(windowWidth, windowHeight);
 
-	std::shared_ptr<Scene> scene = initFluidScene();
-	renderer = new ParticleRenderer(glm::uvec2(1280, 720), scene);
+	scene = initFluidScene();
+	renderer = new ParticleRenderer(glm::uvec2(windowWidth, windowHeight), scene);
 	solver = new ParticleSolver(scene);
 
 	// fps counter
