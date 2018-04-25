@@ -521,7 +521,7 @@ __device__ float poly6Kernel(float r2, float h)
 {
 	/// TODO:: precompute these
 	float h2 = h * h;
-	if (r2 <= h2 && r2 > 0.f)
+	if (r2 <= h2)
 	{
 		float k = 315.f / 64.f / 3.141592f / powf(h, 9.f);
 		return k * powf(h2 - r2, 3.f);
@@ -568,8 +568,8 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 	float sumGradient2 = 0.f;
 
 	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
-	int3 start = centerGridPos - 1;
-	int3 end = centerGridPos + 1;
+	int3 start = centerGridPos - 2;
+	int3 end = centerGridPos + 2;
 
 	int constraintCount = 0;
 
@@ -588,13 +588,13 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 					if (gridAddress2 != gridAddress) { break; }
 
 					int j = sortedParticleId[bucketStart + k];
-					if (i != j && phases[j] < 0) /// TODO:: also takecare of solid
+					if (phases[j] < 0) /// TODO:: also takecare of solid
 					{
 						float3 pj = newPositionsPrev[j];
 						density += poly6Kernel(length2(pi - pj), kernelRadius);
-						float3 gradient = gradientSpikyKernel(pi - pj, kernelRadius);
-						gradientI += gradient;
+						float3 gradient = - /*mass * */ gradientSpikyKernel(pi - pj, kernelRadius) / restDensities[i];
 						sumGradient2 += dot(gradient, gradient);
+						gradientI -= gradient;
 					}
 				}
 			}
@@ -628,8 +628,8 @@ __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 
 	float3 sum = make_float3(0.f);
 	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
-	int3 start = centerGridPos - 1;
-	int3 end = centerGridPos + 1;
+	int3 start = centerGridPos - 2;
+	int3 end = centerGridPos + 2;
 
 	int constraintCount = 0;
 
@@ -683,8 +683,8 @@ __global__ void fluidOmega(float3 * __restrict__ omegas,
 
 	float3 omegai = make_float3(0.f);
 	int3 centerGridPos = calcGridPos(newPositions[i], cellOrigin, cellSize);
-	int3 start = centerGridPos - 1;
-	int3 end = centerGridPos + 1;
+	int3 start = centerGridPos - 2;
+	int3 end = centerGridPos + 2;
 
 	int constraintCount = 0;
 
@@ -736,8 +736,8 @@ __global__ void fluidVorticity(float3 * __restrict__ velocities,
 	float3 omegai = omegas[i];
 	float3 pi = newPositions[i];
 	int3 centerGridPos = calcGridPos(newPositions[i], cellOrigin, cellSize);
-	int3 start = centerGridPos - 1;
-	int3 end = centerGridPos + 1;
+	int3 start = centerGridPos - 2;
+	int3 end = centerGridPos + 2;
 
 	int constraintCount = 0;
 
@@ -1137,7 +1137,7 @@ struct ParticleSolver
 														   devMasses,
 														   devPhases,
 														   devRestDensities,
-														   scene->radius * 2.0f, // kernel radius
+														   scene->radius * 4.0f, // kernel radius
 														   devSortedCellId,
 														   devSortedParticleId,
 														   devCellStart,
@@ -1150,7 +1150,7 @@ struct ParticleSolver
 															 devFluidLambdas,
 															 devRestDensities,
 															 devPhases,
-															 scene->radius * 2.0f, // kernel radius
+															 scene->radius * 4.0f, // kernel radius
 															 devSortedCellId,
 															 devSortedParticleId,
 															 devCellStart,
@@ -1185,7 +1185,7 @@ struct ParticleSolver
 												  devVelocities,
 												  devNewPositions,
 												  devPhases,
-												  scene->radius * 2.0f,
+												  scene->radius * 4.0f,
 												  devSortedCellId,
 												  devSortedParticleId,
 												  devCellStart,
@@ -1200,7 +1200,7 @@ struct ParticleSolver
 													  devNewPositions,
 													  0.0005f,
 													  devPhases,
-													  scene->radius * 2.0f,
+													  scene->radius * 4.0f,
 													  devSortedCellId,
 													  devSortedParticleId,
 													  devCellStart,
