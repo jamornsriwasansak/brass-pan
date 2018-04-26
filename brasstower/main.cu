@@ -169,7 +169,7 @@ std::shared_ptr<Scene> initFluidScene()
 
 	const unsigned int width = 15;
 	const unsigned int depth = 15;
-	const unsigned int height = 15;
+	const unsigned int height = 40;
 	const float containerWidth = (width + 1) * scene->radius * 2.0 * 5.0;
 	const float containerDepth = (depth + 1) * scene->radius * 2.0;
 	const float containerHeight = 4.0;

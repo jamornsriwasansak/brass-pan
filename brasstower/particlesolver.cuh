@@ -517,7 +517,7 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	}
 }
 
-__device__ float poly6Kernel(float r2, float h)
+__host__ __device__ float poly6Kernel(float r2, float h)
 {
 	/// TODO:: precompute these
 	float h2 = h * h;
@@ -529,7 +529,7 @@ __device__ float poly6Kernel(float r2, float h)
 	return 0.f;
 }
 
-__device__ float3 gradientSpikyKernel(const float3 v, float h)
+__host__ __device__ float3 gradientSpikyKernel(const float3 v, float h)
 {
 	/// TODO:: precompute these
 	float h2 = h * h;
@@ -613,6 +613,9 @@ __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 							  const float * __restrict__ restDensities,
 							  const int * __restrict__ phases,
 							  const float kernelRadius,
+							  const float K,
+							  const int N,
+							  const float invKernelDeltaQ,
 							  const int* __restrict__ sortedCellId,
 							  const int* __restrict__ sortedParticleId,
 							  const int* __restrict__ cellStart,
@@ -651,12 +654,13 @@ __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 					if (i != j && phases[j] < 0)
 					{
 						float3 pj = newPositionsPrev[j];
-						sum += (lambdas[i] + lambdas[j]) * gradientSpikyKernel(pi - pj, kernelRadius);
+						float sCorr = -K * powf(poly6Kernel(length2(pi - pj), kernelRadius) * invKernelDeltaQ, N);
+						sum += (lambdas[i] + lambdas[j] + sCorr) * gradientSpikyKernel(pi - pj, kernelRadius);
 					}
 				}
 			}
 
-	float3 deltaPosition = 1.0f / restDensities[i] * sum;
+	float3 deltaPosition = sum / restDensities[i];
 	//printf("%f %f %f\n", deltaPosition.x, deltaPosition.y, deltaPosition.z);
 	newPositionsNext[i] = pi + deltaPosition;
 }
@@ -1151,6 +1155,9 @@ struct ParticleSolver
 															 devRestDensities,
 															 devPhases,
 															 scene->radius * 4.0f, // kernel radius
+															 0.002f, // k for sCorr
+															 4, // N for sCorr
+															 1.0f / poly6Kernel(powf(0.1 * scene->radius * 4.0f, 2.0f), scene->radius * 4.0f),
 															 devSortedCellId,
 															 devSortedParticleId,
 															 devCellStart,
@@ -1158,6 +1165,8 @@ struct ParticleSolver
 															 cellSize,
 															 gridSize,
 															 scene->numParticles);
+					//cudaDeviceSynchronize();
+					//_getch();
 					std::swap(devTempNewPositions, devNewPositions);
 
 					// solve all rigidbody constraints
@@ -1181,7 +1190,7 @@ struct ParticleSolver
 			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, devPhases, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
 
 			// vorticity confinement part 1.
-			/*fluidOmega<<<numBlocks, numThreads>>>(devOmegas,
+			fluidOmega<<<numBlocks, numThreads>>>(devOmegas,
 												  devVelocities,
 												  devNewPositions,
 												  devPhases,
@@ -1198,7 +1207,7 @@ struct ParticleSolver
 			fluidVorticity<<<numBlocks, numThreads>>>(devVelocities,
 													  devOmegas,
 													  devNewPositions,
-													  0.0005f,
+													  0.0012f,
 													  devPhases,
 													  scene->radius * 4.0f,
 													  devSortedCellId,
@@ -1208,7 +1217,7 @@ struct ParticleSolver
 													  cellSize,
 													  gridSize,
 													  scene->numParticles,
-													  subDeltaTime);*/
+													  subDeltaTime);
 
 		}
 
