@@ -602,7 +602,8 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 	sumGradient2 += dot(gradientI, gradientI);
 
 	// compute constraint
-	float constraint = max(density / restDensities[i] - 1.0f, 0.0f);
+	//float constraint = max(density / restDensities[i] - 1.0f, 0.0f); // use this if you're planning to use Akinci 2013
+	float constraint = density / restDensities[i] - 1.0f;
 	float lambda = -constraint / (sumGradient2 + 6.0f);
 	lambdas[i] = lambda;
 }
@@ -742,9 +743,6 @@ __global__ void fluidVorticity(float3 * __restrict__ velocities,
 	int3 centerGridPos = calcGridPos(newPositions[i], cellOrigin, cellSize);
 	int3 start = centerGridPos - 2;
 	int3 end = centerGridPos + 2;
-
-	int constraintCount = 0;
-
 	float3 eta = make_float3(0.f);
 
 	for (int z = start.z; z <= end.z; z++)
@@ -780,6 +778,56 @@ __global__ void fluidVorticity(float3 * __restrict__ velocities,
 	}
 }
 
+__global__ void fluidXSph(float3 * __restrict__ newVelocities,
+						  const float3 * __restrict__ velocities,
+						  const float3 * __restrict__ positions,
+						  const float c, // position-based fluid eq. 17
+						  const int * __restrict__ phases,
+						  const float kernelRadius,
+						  const int* __restrict__ sortedCellId,
+						  const int* __restrict__ sortedParticleId,
+						  const int* __restrict__ cellStart,
+						  const float3 cellOrigin,
+						  const float3 cellSize,
+						  const int3 gridSize,
+						  const int numParticles)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= numParticles || phases[i] > 0) { return; }
+
+	float3 pi = positions[i];
+	int3 centerGridPos = calcGridPos(pi, cellOrigin, cellSize);
+	int3 start = centerGridPos - 2;
+	int3 end = centerGridPos + 2;
+
+	float3 vnew = make_float3(0.f);
+	float3 vi = velocities[i];
+
+	for (int z = start.z; z <= end.z; z++)
+		for (int y = start.y; y <= end.y; y++)
+			for (int x = start.x; x <= end.x; x++)
+			{
+				int3 gridPos = make_int3(x, y, z);
+				int gridAddress = calcGridAddress(gridPos, gridSize);
+				int bucketStart = cellStart[gridAddress];
+				if (bucketStart == -1) { continue; }
+
+				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				{
+					int gridAddress2 = sortedCellId[bucketStart + k];
+					if (gridAddress2 != gridAddress) { break; }
+					int j = sortedParticleId[bucketStart + k];
+					if (i != j && phases[j] < 0)
+					{
+						float3 pj = positions[j];
+						vnew += (velocities[j] - vi) * poly6Kernel(length2(pi - pj), kernelRadius);
+					}
+				}
+			}
+
+	newVelocities[i] = velocities[i] + c * vnew;
+}
+
 __global__ void updatePositions(float3 * __restrict__ positions,
 								const float3 * __restrict__ newPositions,
 								const int * __restrict__ phases,
@@ -808,7 +856,7 @@ struct ParticleSolver
 		// alloc particle vars
 		checkCudaErrors(cudaMalloc(&devPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
-		checkCudaErrors(cudaMalloc(&devTempNewPositions, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devTempFloat3, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
@@ -1101,12 +1149,12 @@ struct ParticleSolver
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
-			for (int i = 0; i < 2; i++)
+			for (int i = 0; i < 1; i++)
 			{
 				// compute grid
 				updateGrid(numBlocks, numThreads);
 
-				for (int j = 0; j < 2; j++)
+				for (int j = 0; j < 4; j++)
 				{
 					// solving all plane collisions
 					for (const Plane & plane : scene->planes)
@@ -1149,13 +1197,13 @@ struct ParticleSolver
 														   cellSize,
 														   gridSize,
 														   scene->numParticles);
-					fluidPosition<<<numBlocks, numThreads>>>(devTempNewPositions,
+					fluidPosition<<<numBlocks, numThreads>>>(devTempFloat3,
 															 devNewPositions,
 															 devFluidLambdas,
 															 devRestDensities,
 															 devPhases,
 															 scene->radius * 4.0f, // kernel radius
-															 0.002f, // k for sCorr
+															 0.0001f, // k for sCorr
 															 4, // N for sCorr
 															 1.0f / poly6Kernel(powf(0.1 * scene->radius * 4.0f, 2.0f), scene->radius * 4.0f),
 															 devSortedCellId,
@@ -1167,7 +1215,7 @@ struct ParticleSolver
 															 scene->numParticles);
 					//cudaDeviceSynchronize();
 					//_getch();
-					std::swap(devTempNewPositions, devNewPositions);
+					std::swap(devTempFloat3, devNewPositions);
 
 					// solve all rigidbody constraints
 					if (scene->numRigidBodies > 0)
@@ -1207,7 +1255,7 @@ struct ParticleSolver
 			fluidVorticity<<<numBlocks, numThreads>>>(devVelocities,
 													  devOmegas,
 													  devNewPositions,
-													  0.0012f,
+													  0.008f, // epsilon in eq. 16
 													  devPhases,
 													  scene->radius * 4.0f,
 													  devSortedCellId,
@@ -1219,6 +1267,21 @@ struct ParticleSolver
 													  scene->numParticles,
 													  subDeltaTime);
 
+			// xsph
+			fluidXSph<<<numBlocks, numThreads>>>(devTempFloat3,
+												 devVelocities,
+												 devNewPositions,
+												 0.0003f, // C in eq. 17
+												 devPhases,
+												 scene->radius * 4.0f,
+												 devSortedCellId,
+												 devSortedParticleId,
+												 devCellStart,
+												 cellOrigin,
+												 cellSize,
+												 gridSize,
+												 scene->numParticles);
+			std::swap(devVelocities, devTempFloat3);
 		}
 
 		// we need to make picked particle immovable
@@ -1233,7 +1296,7 @@ struct ParticleSolver
 
 	float3 *	devPositions;
 	float3 *	devNewPositions;
-	float3 *	devTempNewPositions;
+	float3 *	devTempFloat3;
 	float3 *	devVelocities;
 	float *		devMasses;
 	float *		devInvMasses;
