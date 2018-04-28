@@ -1326,6 +1326,7 @@ struct ParticleSolver
 
 					// fluid
 					fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
+														   devFluidDensities,
 														   devNewPositions,
 														   devMasses,
 														   devPhases,
@@ -1400,7 +1401,7 @@ struct ParticleSolver
 			fluidVorticity<<<numBlocks, numThreads>>>(devVelocities,
 													  devOmegas,
 													  devNewPositions,
-													  0.012f, // epsilon in eq. 16
+													  0.001f, // epsilon in eq. 16
 													  devPhases,
 													  fluidKernelRadius,
 													  devSortedCellId,
