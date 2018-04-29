@@ -222,34 +222,6 @@ __global__ void findStartId(int * cellStart,
 	}
 }
 
-__global__ void detectNeighbours(int* __restrict__ fluidNeighbours,
-								 const float3 * __restrict__ positions,
-								 const int* __restrict__ phases,
-								 const int* __restrict__ sortedCellId,
-								 const int* __restrict__ sortedParticleId,
-								 const int* __restrict__ cellStart,
-								 const float3 cellOrigin,
-								 const float3 cellSize,
-								 const int3 gridSize,
-								 const int3 maxGridSearchOffset, // max(fluidGridSearchOffset, solidGridSearchOffset)
-								 const int numParticles,
-								 const float solidRadius,
-								 const float fluidRadius)
-{
-	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
-	if (i >= numParticles) { return; }
-
-	int3 centerGridPos = calcGridPos(positions[i], cellOrigin, cellSize);
-	int3 start = centerGridPos - maxGridSearchOffset;
-	int3 end = centerGridPos + maxGridSearchOffset;
-
-	for (int z = start.z; z <= end.z; z++)
-		for (int y = start.y; y <= end.y; y++)
-			for (int x = start.x; x <= end.x; x++)
-			{
-			}
-}
-
 // SOLVER //
 
 __global__ void applyForces(float3 * __restrict__ velocities,
@@ -594,7 +566,7 @@ __device__ float3 gradientSpikyKernel(const float3 v, const float r2)
 	return make_float3(0.f);
 }
 
-__device__ float akinciSplineC(float r, float h) // akinci used 2*r instead of r
+__device__ float akinciSplineC(float r) // akinci used 2*r instead of r
 {
 	if (r < KernelRadius && r > 0)
 	{
@@ -613,8 +585,7 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 							const float3 * __restrict__ newPositionsPrev,
 							const float * __restrict__ masses,
 							const int * __restrict__ phases,
-							const float * __restrict__ restDensities,
-							const float kernelRadius,
+							const float restDensity,
 							const float epsilon,
 							const int* __restrict__ sortedCellId,
 							const int* __restrict__ sortedParticleId,
@@ -663,7 +634,7 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 						float3 diff = pi - pj;
 						float dist2 = length2(pi - pj);
 						density += poly6Kernel(dist2);
-						float3 gradient = - /*mass * */ gradientSpikyKernel(diff, dist2) / restDensities[i];
+						float3 gradient = - /*mass * */ gradientSpikyKernel(diff, dist2) / restDensity;
 						sumGradient2 += dot(gradient, gradient);
 						gradientI -= gradient;
 					}
@@ -673,7 +644,7 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 	sumGradient2 += dot(gradientI, gradientI);
 
 	// compute constraint
-	float constraint = density / restDensities[i] - 1.0f;
+	float constraint = density / restDensity - 1.0f;
 	if (useAkinciCohesionTension) { constraint = max(constraint, 0.0f); }
 	float lambda = -constraint / (sumGradient2 + epsilon);
 	lambdas[i] = lambda;
@@ -683,9 +654,8 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 							  const float3 * __restrict__ newPositionsPrev,
 							  const float * __restrict__ lambdas,
-							  const float * __restrict__ restDensities,
+							  const float restDensity,
 							  const int * __restrict__ phases,
-							  const float kernelRadius,
 							  const float K,
 							  const int N,
 							  const int* __restrict__ sortedCellId,
@@ -731,13 +701,13 @@ __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 						float sumLambda = lambdas[i] + lambdas[j];
 						float3 diff = pi - pj;
 						float dist2 = length2(diff);
-						if (!useAkinciCohesionTension) sumLambda += -K * powf(poly6Kernel(dist2) / poly6Kernel(powf(0.03f * kernelRadius, 2.f)), N);
+						if (!useAkinciCohesionTension) sumLambda += -K * powf(poly6Kernel(dist2) / poly6Kernel(powf(0.03f * KernelRadius, 2.f)), N);
 						sum += sumLambda * gradientSpikyKernel(pi - pj, dist2);
 					}
 				}
 			}
 
-	float3 deltaPosition = sum / restDensities[i];
+	float3 deltaPosition = sum / restDensity;
 	newPositionsNext[i] = pi + deltaPosition;
 }
 
@@ -746,7 +716,6 @@ __global__ void fluidOmega(float3 * __restrict__ omegas,
 						   const float3 * __restrict__ velocities,
 						   const float3 * __restrict__ positions,
 						   const int * __restrict__ phases,
-						   const float kernelRadius,
 						   const int* __restrict__ sortedCellId,
 						   const int* __restrict__ sortedParticleId,
 						   const int* __restrict__ cellStart,
@@ -802,7 +771,6 @@ __global__ void fluidVorticity(float3 * __restrict__ velocities,
 							   const float3 * __restrict__ positions,
 							   const float scalingFactor,
 							   const int * __restrict__ phases,
-							   const float kernelRadius,
 							   const int* __restrict__ sortedCellId,
 							   const int* __restrict__ sortedParticleId,
 							   const int* __restrict__ cellStart,
@@ -861,7 +829,6 @@ __global__ void fluidXSph(float3 * __restrict__ newVelocities,
 						  const float3 * __restrict__ positions,
 						  const float c, // position-based fluid eq. 17
 						  const int * __restrict__ phases,
-						  const float kernelRadius,
 						  const int* __restrict__ sortedCellId,
 						  const int* __restrict__ sortedParticleId,
 						  const int* __restrict__ cellStart,
@@ -911,7 +878,6 @@ __global__ void fluidNormal(float3 * __restrict__ normals,
 							const float3 * __restrict__ positions,
 							const float * __restrict__ densities,
 							const int * __restrict__ phases,
-							const float kernelRadius,
 							const int* __restrict__ sortedCellId,
 							const int* __restrict__ sortedParticleId,
 							const int* __restrict__ cellStart,
@@ -954,7 +920,7 @@ __global__ void fluidNormal(float3 * __restrict__ normals,
 				}
 			}
 
-	normals[i] = kernelRadius * normal;
+	normals[i] = KernelRadius * normal;
 }
 
 __global__ void fluidAkinciTension(float3 * __restrict__ newVelocities,
@@ -962,9 +928,8 @@ __global__ void fluidAkinciTension(float3 * __restrict__ newVelocities,
 								   const float3 * __restrict__ positions,
 								   const float3 * __restrict__ normals,
 								   const float * __restrict__ densities,
-								   const float * __restrict__ restDensities,
+								   const float restDensity,
 								   const int * __restrict__ phases,
-								   const float kernelRadius,
 								   const float surfaceTension,
 								   const int* __restrict__ sortedCellId,
 								   const int* __restrict__ sortedParticleId,
@@ -1006,9 +971,9 @@ __global__ void fluidAkinciTension(float3 * __restrict__ newVelocities,
 						float lenPiPj = length(pi - pj);
 						if (lenPiPj > 0.f)
 						{
-							float3 fCohesion = -surfaceTension * akinciSplineC(lenPiPj, kernelRadius) * (pi - pj) / lenPiPj;
+							float3 fCohesion = -surfaceTension * akinciSplineC(lenPiPj) * (pi - pj) / lenPiPj;
 							float3 fCurvature = -surfaceTension * (normals[i] - normals[j]);
-							float kij = 2.0f * restDensities[i] / (densities[i] + densities[j]);
+							float kij = 2.0f * restDensity / (densities[i] + densities[j]);
 							fTension += kij * (fCohesion + fCurvature);
 						}
 						
@@ -1056,7 +1021,6 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
-		checkCudaErrors(cudaMalloc(&devRestDensities, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devOmegas, scene->numMaxParticles * sizeof(float3)));
 
 		// set velocity
@@ -1100,8 +1064,10 @@ struct ParticleSolver
 
 		for (std::shared_ptr<Fluid> fluids : scene->fluids)
 		{
-			addFluids(fluids->positions, fluids->massPerParticle, fluids->restDensity);
+			addFluids(fluids->positions, fluids->massPerParticle);
 		}
+
+		fluidRestDensity = scene->fluidRestDensity;
 	}
 
 	void updateTempStorageSize(const size_t size)
@@ -1225,7 +1191,7 @@ struct ParticleSolver
 		scene->numRigidBodies += 1;
 	}
 
-	void addFluids(const std::vector<glm::vec3> & positions, const float massPerParticle, const float restDensity)
+	void addFluids(const std::vector<glm::vec3> & positions, const float massPerParticle)
 	{
 		int numParticles = positions.size();
 		if (scene->numParticles + numParticles >= scene->numMaxParticles)
@@ -1254,10 +1220,6 @@ struct ParticleSolver
 		setDevArr_int<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
 												 -1,
 												 numParticles);
-		// set rest density
-		setDevArr_float<<<numBlocks, numThreads>>>(devRestDensities + scene->numParticles,
-												   restDensity,
-												   numParticles);
 		scene->numParticles += numParticles;
 	}
 
@@ -1388,8 +1350,7 @@ struct ParticleSolver
 														   devNewPositions,
 														   devMasses,
 														   devPhases,
-														   devRestDensities,
-														   fluidKernelRadius, // kernel radius
+														   fluidRestDensity,
 														   60.0f, // relaxation parameter
 														   devSortedCellId,
 														   devSortedParticleId,
@@ -1403,9 +1364,8 @@ struct ParticleSolver
 					fluidPosition<<<numBlocks, numThreads>>>(devTempFloat3,
 															 devNewPositions,
 															 devFluidLambdas,
-															 devRestDensities,
+															 fluidRestDensity,
 															 devPhases,
-															 fluidKernelRadius, // kernel radius
 															 0.0001f, // k for sCorr
 															 4, // N for sCorr
 															 devSortedCellId,
@@ -1444,7 +1404,6 @@ struct ParticleSolver
 												  devVelocities,
 												  devNewPositions,
 												  devPhases,
-												  fluidKernelRadius,
 												  devSortedCellId,
 												  devSortedParticleId,
 												  devCellStart,
@@ -1460,7 +1419,6 @@ struct ParticleSolver
 													  devNewPositions,
 													  0.001f, // epsilon in eq. 16
 													  devPhases,
-													  fluidKernelRadius,
 													  devSortedCellId,
 													  devSortedParticleId,
 													  devCellStart,
@@ -1478,7 +1436,6 @@ struct ParticleSolver
 													   devNewPositions,
 													   devFluidDensities,
 													   devPhases,
-													   fluidKernelRadius,
 													   devSortedCellId,
 													   devSortedParticleId,
 													   devCellStart,
@@ -1493,10 +1450,9 @@ struct ParticleSolver
 															  devNewPositions,
 															  devFluidNormals,
 															  devFluidDensities,
-															  devRestDensities,
+															  fluidRestDensity,
 															  devPhases,
-															  fluidKernelRadius,
-															  0.1f,
+															  0.1f, // tension strength
 															  devSortedCellId,
 															  devSortedParticleId,
 															  devCellStart,
@@ -1515,7 +1471,6 @@ struct ParticleSolver
 												 devNewPositions,
 												 0.0002f, // C in eq. 17
 												 devPhases,
-												 fluidKernelRadius,
 												 devSortedCellId,
 												 devSortedParticleId,
 												 devCellStart,
@@ -1544,7 +1499,6 @@ struct ParticleSolver
 	float *		devMasses;
 	float *		devInvMasses;
 	float *		devInvScaledMasses;
-	float *		devRestDensities;
 	int *		devPhases;
 	int *		devSolidPhaseCounter;
 	float3 *	devOmegas;
@@ -1554,6 +1508,7 @@ struct ParticleSolver
 	float3 *	devFluidNormals;
 	int *		devFluidNeighboursIds;
 	float		fluidKernelRadius;
+	float		fluidRestDensity;
 
 	int *		devSortedCellId;
 	int *		devSortedParticleId;

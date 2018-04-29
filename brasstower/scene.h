@@ -117,18 +117,15 @@ struct Granulars
 struct Fluid
 {
 	std::vector<glm::vec3> positions;
-	float restDensity;
 	float massPerParticle;
 
 	static std::shared_ptr<Fluid> CreateFluidBlock(const glm::ivec3 & dimension,
 												   const glm::vec3 & startPosition,
 												   const glm::vec3 & stepSize,
-												   const float massPerParticle,
-												   const float restDensity)
+												   const float massPerParticle)
 	{
 		std::shared_ptr<Fluid> result = std::make_shared<Fluid>();
 		result->massPerParticle = massPerParticle;
-		result->restDensity = restDensity;
 
 		std::vector<glm::vec3> & positions = result->positions;
 		for (int i = 0; i < dimension.x; i++)
@@ -230,6 +227,8 @@ struct Scene
 	std::vector<std::shared_ptr<Fluid>> fluids;
 
 	PointLight pointLight;
+
+	float fluidRestDensity;
 
 	/// THESE ARE PARTICLE SYSTEM PARAMETERS! don't touch!
 	/// TODO:: move these to particle system
