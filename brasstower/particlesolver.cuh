@@ -86,7 +86,7 @@ __global__ void setDevArr_devIntPtr(int * __restrict__ devArr,
 								    const int * __restrict__ value,
 								    const int numValues)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = *value;
 }
@@ -95,7 +95,7 @@ __global__ void setDevArr_int(int * __restrict__ devArr,
 						  const int value,
 						  const int numValues)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = value;
 }
@@ -104,7 +104,7 @@ __global__ void setDevArr_float(float * __restrict__ devArr,
 								const float value,
 								const int numValues)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = value;
 }
@@ -113,7 +113,7 @@ __global__ void setDevArr_int2(int2 * __restrict__ devArr,
 							   const int2 value,
 							   const int numValues)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = value;
 }
@@ -122,7 +122,7 @@ __global__ void setDevArr_float3(float3 * __restrict__ devArr,
 								 const float3 val,
 								 const int numValues)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = val;
 }
@@ -131,7 +131,7 @@ __global__ void setDevArr_float4(float4 * __restrict__ devArr,
 								 const float4 val,
 								 const int numValues)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = val;
 }
@@ -141,7 +141,7 @@ __global__ void setDevArr_counterIncrement(int * __restrict__ devArr,
 										  const int incrementValue,
 										  const int numValues)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = atomicAdd(counter, incrementValue);
 }
@@ -154,7 +154,7 @@ __global__ void initPositionBox(float3 * __restrict__ positions,
 								const float3 step,
 								const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 	int x = i % dimension.x;
 	int y = (i / dimension.x) % dimension.y;
@@ -192,7 +192,7 @@ __global__ void updateGridId(int * __restrict__ gridIds,
 							 const int3 gridSize,
 							 const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 
 	int3 gridPos = calcGridPos(positions[i], cellOrigin, cellSize);
@@ -206,7 +206,7 @@ __global__ void findStartId(int * cellStart,
 							const int * sortedGridIds,
 							const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 
 	int cell = sortedGridIds[i];
@@ -222,6 +222,34 @@ __global__ void findStartId(int * cellStart,
 	}
 }
 
+__global__ void detectNeighbours(int* __restrict__ fluidNeighbours,
+								 const float3 * __restrict__ positions,
+								 const int* __restrict__ phases,
+								 const int* __restrict__ sortedCellId,
+								 const int* __restrict__ sortedParticleId,
+								 const int* __restrict__ cellStart,
+								 const float3 cellOrigin,
+								 const float3 cellSize,
+								 const int3 gridSize,
+								 const int3 maxGridSearchOffset, // max(fluidGridSearchOffset, solidGridSearchOffset)
+								 const int numParticles,
+								 const float solidRadius,
+								 const float fluidRadius)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numParticles) { return; }
+
+	int3 centerGridPos = calcGridPos(positions[i], cellOrigin, cellSize);
+	int3 start = centerGridPos - maxGridSearchOffset;
+	int3 end = centerGridPos + maxGridSearchOffset;
+
+	for (int z = start.z; z <= end.z; z++)
+		for (int y = start.y; y <= end.y; y++)
+			for (int x = start.x; x <= end.x; x++)
+			{
+			}
+}
+
 // SOLVER //
 
 __global__ void applyForces(float3 * __restrict__ velocities,
@@ -229,7 +257,7 @@ __global__ void applyForces(float3 * __restrict__ velocities,
 							const int numParticles,
 							const float deltaTime)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 	velocities[i] += make_float3(0.0f, -9.8f, 0.0f) * deltaTime;
 }
@@ -240,7 +268,7 @@ __global__ void predictPositions(float3 * __restrict__ newPositions,
 								 const int numParticles,
 								 const float deltaTime)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 	newPositions[i] = positions[i] + velocities[i] * deltaTime;
 }
@@ -251,7 +279,7 @@ __global__ void updateVelocity(float3 * __restrict__ velocities,
 							   const int numParticles,
 							   const float invDeltaTime)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 	velocities[i] = (newPositions[i] - positions[i]) * invDeltaTime;
 }
@@ -263,7 +291,7 @@ __global__ void planeStabilize(float3 * __restrict__ positions,
 							   const float3 planeNormal,
 							   const float radius)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 	float3 origin2position = planeOrigin - positions[i];
 	float distance = dot(origin2position, planeNormal) + radius;
@@ -282,7 +310,7 @@ __global__ void particlePlaneCollisionConstraint(float3 * __restrict__ newPositi
 												 const float3 planeNormal,
 												 const float radius)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 	float3 origin2position = planeOrigin - newPositions[i];
 	float distance = dot(origin2position, planeNormal) + radius;
@@ -327,7 +355,7 @@ __global__ void particleParticleCollisionConstraint(float3 * __restrict__ newPos
 													const int numParticles,
 													const float radius)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 
 	float3 xi = positions[i];
@@ -412,7 +440,7 @@ __global__ void computeInvScaledMasses(float* __restrict__ invScaledMasses,
 									   const float k,
 									   const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 
 	const float e = 2.7182818284f;
@@ -517,41 +545,71 @@ __global__ void shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	}
 }
 
+__device__ __constant__ float KernelConst1;
+__device__ __constant__ float KernelConst2;
+__device__ __constant__ float KernelConst3;
+__device__ __constant__ float KernelConst4;
+__device__ __constant__ int3 FluidGridSearchSize;
+__device__ __constant__ float KernelRadius;
+__device__ __constant__ float KernelSquaredRadius;
+__device__ __constant__ float KernelHalfRadius;
+
+void SetKernelRadius(float h)
+{
+	float const1 = 315.f / 64.f / 3.141592f / powf(h, 9.0f);
+	checkCudaErrors(cudaMemcpyToSymbol(KernelConst1, &const1, sizeof(float)));
+	float const2 = -45.f / 3.141592f / powf(h, 6.f);
+	checkCudaErrors(cudaMemcpyToSymbol(KernelConst2, &const2, sizeof(float)));
+	float const3 = 32.0f / 3.141592f / powf(h, 9.f);
+	checkCudaErrors(cudaMemcpyToSymbol(KernelConst3, &const3, sizeof(float)));
+	float const4 = powf(h, 6.0f) / 64.0f;
+	checkCudaErrors(cudaMemcpyToSymbol(KernelConst4, &const4, sizeof(float)));
+	float const5 = h * h;
+	checkCudaErrors(cudaMemcpyToSymbol(KernelSquaredRadius, &const5, sizeof(float)));
+	float const6 = h * 0.5f;
+	checkCudaErrors(cudaMemcpyToSymbol(KernelHalfRadius, &const6, sizeof(float)));
+	float const7 = h;
+	checkCudaErrors(cudaMemcpyToSymbol(KernelRadius, &const7, sizeof(float)));
+}
+
 __host__ __device__ float poly6Kernel(float r2, float h)
 {
 	/// TODO:: precompute these
-	float h2 = h * h;
-	if (r2 <= h2)
+	if (r2 <= KernelSquaredRadius)
 	{
-		float k = 315.f / 64.f / 3.141592f / powf(h, 9.f);
-		return k * powf(h2 - r2, 3.f);
+		float temp = KernelSquaredRadius - r2;
+		return KernelConst1 * temp * temp * temp;
 	}
 	return 0.f;
 }
 
-__host__ __device__ float3 gradientSpikyKernel(const float3 v, float h)
+__host__ __device__ float3 gradientSpikyKernel(const float3 v, const float r2, const float h)
 {
-	/// TODO:: precompute these
-	float h2 = h * h;
-	float r2 = dot(v, v);
-	if (r2 <= h2 && r2 > 0.f)
+	if (r2 <= KernelSquaredRadius && r2 > 0.f)
 	{
 		float r = sqrtf(r2);
-		float k = -45.f / 3.141592f / powf(h, 6.f);
-		return k * powf(h - r, 2.f) * v / r;
+		float temp = KernelRadius - r;
+		return KernelConst2 * temp * temp * v / r;
 	}
 	return make_float3(0.f);
 }
 
+// obsoleted
+__host__ __device__ float3 gradientSpikyKernel(const float3 v, float h)
+{
+	return gradientSpikyKernel(v, dot(v, v), h);
+}
+
 __host__ __device__ float akinciSplineC(float r, float h) // akinci used 2*r instead of r
 {
-	if (r < h && r > 0)
+	if (r < KernelRadius && r > 0)
 	{
-		float k = 32.0f / 3.141592f / powf(h, 9.f);
-		if (r >= 0.5f * h)
-			return k * powf(h - r, 3.0f) * powf(r, 3.0f);
+		float temp = (KernelRadius - r) * r;
+		float temp3 = temp * temp * temp;
+		if (r >= KernelHalfRadius)
+			return KernelConst3 * temp3;
 		else
-			return 2.0f * k * powf(h - r, 3.0f) * powf(r, 3.0f) - powf(h, 6.0f) / 64.0f;
+			return 2.0f * KernelConst3 * temp3 - KernelConst4;
 	}
 	return 0.f;
 }
@@ -574,7 +632,7 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 							const int numParticles,
 							const bool useAkinciCohesionTension)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles || phases[i] > 0) { return; }
 
 	float3 pi = newPositionsPrev[i];
@@ -645,7 +703,7 @@ __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 							  const int numParticles,
 							  const bool useAkinciCohesionTension)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles || phases[i] > 0) { return; }
 
 	float3 pi = newPositionsPrev[i];
@@ -701,7 +759,7 @@ __global__ void fluidOmega(float3 * __restrict__ omegas,
 						   const int3 gridSearchOffset,
 						   const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles || phases[i] > 0) { return; }
 
 	float3 pi = positions[i];
@@ -757,7 +815,7 @@ __global__ void fluidVorticity(float3 * __restrict__ velocities,
 							   const int numParticles,
 							   const float deltaTime)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles || phases[i] > 0) { return; }
 
 	float3 omegai = omegas[i];
@@ -815,7 +873,7 @@ __global__ void fluidXSph(float3 * __restrict__ newVelocities,
 						  const int3 gridSearchOffset,
 						  const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles || phases[i] > 0) { return; }
 
 	float3 pi = positions[i];
@@ -865,7 +923,7 @@ __global__ void fluidNormal(float3 * __restrict__ normals,
 							const int3 gridSearchOffset,
 							const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles || phases[i] > 0) { return; }
 
 	float3 pi = positions[i];
@@ -919,7 +977,7 @@ __global__ void fluidAkinciTension(float3 * __restrict__ newVelocities,
 								   const int numParticles,
 								   const float deltaTime)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles || phases[i] > 0) { return; }
 
 	float3 pi = positions[i];
@@ -968,7 +1026,7 @@ __global__ void updatePositions(float3 * __restrict__ positions,
 								const float threshold,
 								const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 
 	const int phase = phases[i];
@@ -1042,6 +1100,9 @@ struct ParticleSolver
 		{
 			addFluids(fluids->positions, fluids->massPerParticle, fluids->restDensity);
 		}
+
+		float fluidKernelRadius = 4.0f * scene->radius;
+		SetKernelRadius(fluidKernelRadius);
 	}
 
 	void updateTempStorageSize(const size_t size)
@@ -1232,6 +1293,11 @@ struct ParticleSolver
 		findStartId<<<numBlocks, numThreads>>>(devCellStart, devSortedCellId, scene->numParticles);
 	}
 
+	void updateFluidKernelRadius(float solidRadius)
+	{
+
+	}
+
 	void update(const int numSubTimeStep,
 				const float deltaTime,
 				const int pickedParticleId = -1,
@@ -1243,6 +1309,8 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
 
 		float fluidKernelRadius = 4.0f * scene->radius;
+		float kernelRadiusPow2 = powf(fluidKernelRadius, 2.0f);
+
 		int3 fluidGridSearchOffset = make_int3(ceil(make_float3(fluidKernelRadius) / cellSize));
 
 		bool useAkinciCohesionTension = true;
@@ -1332,7 +1400,7 @@ struct ParticleSolver
 														   devPhases,
 														   devRestDensities,
 														   fluidKernelRadius, // kernel radius
-														   10.0f, // relaxation parameter
+														   5.0f, // relaxation parameter
 														   devSortedCellId,
 														   devSortedParticleId,
 														   devCellStart,
@@ -1439,7 +1507,7 @@ struct ParticleSolver
 															  devRestDensities,
 															  devPhases,
 															  fluidKernelRadius,
-															  0.1f,
+															  0.05f,
 															  devSortedCellId,
 															  devSortedParticleId,
 															  devCellStart,
@@ -1491,9 +1559,11 @@ struct ParticleSolver
 	int *		devPhases;
 	int *		devSolidPhaseCounter;
 	float3 *	devOmegas;
+
 	float *		devFluidLambdas;
 	float *		devFluidDensities;
 	float3 *	devFluidNormals;
+	int *		devFluidNeighboursIds;
 
 	int *		devSortedCellId;
 	int *		devSortedParticleId;

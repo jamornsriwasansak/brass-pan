@@ -169,9 +169,9 @@ std::shared_ptr<Scene> initFluidScene()
 
 	const unsigned int width = 15;
 	const unsigned int depth = 15;
-	const unsigned int height = 50;
-	const float containerWidth = (width + 1) * scene->radius * 2.0 * 5.0;
-	const float containerDepth = (depth + 1) * scene->radius * 2.0;
+	const unsigned int height = 45;
+	const float containerWidth = (width + 1) * scene->radius * 2.0 * 3.0;
+	const float containerDepth = (depth + 1) * scene->radius * 2.0 * 1.5;
 	const float containerHeight = 4.0;
 	const float diam = 2.0 * scene->radius;
 	const float startX = -0.5*containerWidth + diam;
@@ -192,23 +192,23 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
-	scene->camera = Camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight),
+	scene->camera = Camera(glm::vec3(0, 5, -7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight),
 
 	// mass per particle unimplemented
-	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 1.0f, 900.0));
+	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 1.0f, 1000.0));
 	return scene;
 }
 
 __global__ void mapPositions(float4 * ssboDptr, float3 * position, const int numParticles)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 	ssboDptr[i] = make_float4(position[i].x, position[i].y, position[i].z, 0.0f);
 }
 
 __global__ void mapMatrices(matrix4 * matrices, quaternion * quaternions, float3 * CMs, const int numRigidBodies)
 {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numRigidBodies) { return; }
 	float3 CM = CMs[i];
 	matrices[i] = extract_rotation_matrix4(quaternions[i]);
