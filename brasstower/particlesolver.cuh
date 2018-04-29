@@ -572,7 +572,7 @@ void SetKernelRadius(float h)
 	checkCudaErrors(cudaMemcpyToSymbol(KernelRadius, &const7, sizeof(float)));
 }
 
-__device__ float poly6Kernel(float r2, float h)
+__device__ float poly6Kernel(float r2)
 {
 	/// TODO:: precompute these
 	if (r2 <= KernelSquaredRadius)
@@ -583,7 +583,7 @@ __device__ float poly6Kernel(float r2, float h)
 	return 0.f;
 }
 
-__device__ float3 gradientSpikyKernel(const float3 v, const float r2, const float h)
+__device__ float3 gradientSpikyKernel(const float3 v, const float r2)
 {
 	if (r2 <= KernelSquaredRadius && r2 > 0.f)
 	{
@@ -592,12 +592,6 @@ __device__ float3 gradientSpikyKernel(const float3 v, const float r2, const floa
 		return KernelConst2 * temp * temp * v / r;
 	}
 	return make_float3(0.f);
-}
-
-// obsoleted
-__device__ float3 gradientSpikyKernel(const float3 v, float h)
-{
-	return gradientSpikyKernel(v, dot(v, v), h);
 }
 
 __device__ float akinciSplineC(float r, float h) // akinci used 2*r instead of r
@@ -666,8 +660,10 @@ __global__ void fluidLambda(float * __restrict__ lambdas,
 					if (phases[j] < 0) /// TODO:: also takecare of solid
 					{
 						float3 pj = newPositionsPrev[j];
-						density += poly6Kernel(length2(pi - pj), kernelRadius);
-						float3 gradient = - /*mass * */ gradientSpikyKernel(pi - pj, kernelRadius) / restDensities[i];
+						float3 diff = pi - pj;
+						float dist2 = length2(pi - pj);
+						density += poly6Kernel(dist2);
+						float3 gradient = - /*mass * */ gradientSpikyKernel(diff, dist2) / restDensities[i];
 						sumGradient2 += dot(gradient, gradient);
 						gradientI -= gradient;
 					}
@@ -733,8 +729,10 @@ __global__ void fluidPosition(float3 * __restrict__ newPositionsNext,
 					{
 						float3 pj = newPositionsPrev[j];
 						float sumLambda = lambdas[i] + lambdas[j];
-						if (!useAkinciCohesionTension) sumLambda += -K * powf(poly6Kernel(length2(pi - pj), kernelRadius) / poly6Kernel(powf(0.03f * kernelRadius, 2.f), kernelRadius), N);
-						sum += sumLambda * gradientSpikyKernel(pi - pj, kernelRadius);
+						float3 diff = pi - pj;
+						float dist2 = length2(diff);
+						if (!useAkinciCohesionTension) sumLambda += -K * powf(poly6Kernel(dist2) / poly6Kernel(powf(0.03f * kernelRadius, 2.f)), N);
+						sum += sumLambda * gradientSpikyKernel(pi - pj, dist2);
 					}
 				}
 			}
@@ -790,7 +788,8 @@ __global__ void fluidOmega(float3 * __restrict__ omegas,
 					{
 						float3 pj = positions[j];
 						float3 vj = velocities[j];
-						omegai += cross(vj - vi, gradientSpikyKernel(pi - pj, kernelRadius));
+						float3 diff = pi - pj;
+						omegai += cross(vj - vi, gradientSpikyKernel(diff, length2(diff)));
 					}
 				}
 			}
@@ -842,7 +841,8 @@ __global__ void fluidVorticity(float3 * __restrict__ velocities,
 					if (i != j && phases[j] < 0)
 					{
 						float3 pj = positions[j];
-						eta += length(omegas[j]) * gradientSpikyKernel(pi - pj, kernelRadius);
+						float3 diff = pi - pj;
+						eta += length(omegas[j]) * gradientSpikyKernel(diff, length2(diff));
 					}
 				}
 			}
@@ -852,7 +852,6 @@ __global__ void fluidVorticity(float3 * __restrict__ velocities,
 		float3 normal = normalize(eta);
 
 		/// TODO:: also have to be devided by mass
-		//printf("%f %f %f\n", cross(normal, omegai));
 		velocities[i] += scalingFactor * cross(normal, omegai) * deltaTime;
 	}
 }
@@ -900,7 +899,7 @@ __global__ void fluidXSph(float3 * __restrict__ newVelocities,
 					if (i != j && phases[j] < 0)
 					{
 						float3 pj = positions[j];
-						vnew += (velocities[j] - vi) * poly6Kernel(length2(pi - pj), kernelRadius);
+						vnew += (velocities[j] - vi) * poly6Kernel(length2(pi - pj));
 					}
 				}
 			}
@@ -949,7 +948,8 @@ __global__ void fluidNormal(float3 * __restrict__ normals,
 					if (i != j && phases[j] < 0)
 					{
 						float3 pj = positions[j];
-						normal += 1.0f / densities[j] * gradientSpikyKernel(pi - pj, kernelRadius);
+						float3 diff = pi - pj;
+						normal += 1.0f / densities[j] * gradientSpikyKernel(diff, length2(diff));
 					}
 				}
 			}
