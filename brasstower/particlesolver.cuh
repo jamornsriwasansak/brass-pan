@@ -1006,10 +1006,10 @@ struct ParticleSolver
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
 		scene(scene),
 		cellOrigin(make_float3(-4.01, -1.01, -5.01)),
-		cellSize(make_float3(scene->radius * 3.0f)),
+		cellSize(make_float3(scene->radius * 2.3f)),
 		gridSize(make_int3(512))
 	{
-		fluidKernelRadius = 3.0f * scene->radius;
+		fluidKernelRadius = 2.3f * scene->radius;
 		SetKernelRadius(fluidKernelRadius);
 
 		// alloc particle vars
@@ -1351,7 +1351,7 @@ struct ParticleSolver
 														   devMasses,
 														   devPhases,
 														   fluidRestDensity,
-														   60.0f, // relaxation parameter
+														   300.0f, // relaxation parameter
 														   devSortedCellId,
 														   devSortedParticleId,
 														   devCellStart,
@@ -1452,7 +1452,7 @@ struct ParticleSolver
 															  devFluidDensities,
 															  fluidRestDensity,
 															  devPhases,
-															  0.1f, // tension strength
+															  0.6, // tension strength
 															  devSortedCellId,
 															  devSortedParticleId,
 															  devCellStart,
