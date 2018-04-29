@@ -167,9 +167,9 @@ std::shared_ptr<Scene> initFluidScene()
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
 	scene->radius = 0.05f;
 
-	const unsigned int width = 15;
-	const unsigned int depth = 15;
-	const unsigned int height = 45;
+	const unsigned int width = 20;
+	const unsigned int depth = 20;
+	const unsigned int height = 50;
 	const float containerWidth = (width + 1) * scene->radius * 2.0 * 3.0;
 	const float containerDepth = (depth + 1) * scene->radius * 2.0 * 1.5;
 	const float containerHeight = 4.0;
@@ -195,7 +195,7 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->camera = Camera(glm::vec3(0, 5, -7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight),
 
 	// mass per particle unimplemented
-	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 1.0f, 1000.0));
+	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 1.0f, 1200.0));
 	return scene;
 }
 
