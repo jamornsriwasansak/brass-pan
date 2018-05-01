@@ -73,10 +73,11 @@ fluidLambda(float * __restrict__ lambdas,
 			const float * __restrict__ masses,
 			const int * __restrict__ phases,
 			const float restDensity,
+			const float solidDensity,
 			const float epsilon,
-			const int* __restrict__ sortedCellId,
-			const int* __restrict__ sortedParticleId,
-			const int* __restrict__ cellStart,
+			const int * __restrict__ sortedCellId,
+			const int * __restrict__ sortedParticleId,
+			const int * __restrict__ cellStart,
 			const float3 cellOrigin,
 			const float3 cellSize,
 			const int3 gridSize,
@@ -113,21 +114,19 @@ fluidLambda(float * __restrict__ lambdas,
 					if (gridAddress2 != gridAddress) { break; }
 
 					const int j = sortedParticleId[bucketStart + k];
-					if (phases[j] < 0) /// TODO:: also takecare of solid
-					{
-						const float massj = masses[j];
-						const float3 pj = newPositionsPrev[j];
-						const float3 diff = pi - pj;
-						const float dist2 = length2(pi - pj);
+					const float massj = masses[j];
+					const float3 pj = newPositionsPrev[j];
+					const float3 diff = pi - pj;
+					const float dist2 = length2(pi - pj);
 
-						// density
-						density += massj * poly6Kernel(dist2);
+					// density
+					const float liquidDensity = massj * poly6Kernel(dist2);
+					density += (phases[j] < 0) ? liquidDensity : solidDensity * liquidDensity;
 
-						// gradient for lambda
-						const float3 gradient = - massj * gradientSpikyKernel(diff, dist2) / restDensity;
-						sumGradient2 += dot(gradient, gradient);
-						gradientI -= gradient;
-					}
+					// gradient for lambda
+					const float3 gradient = - massj * gradientSpikyKernel(diff, dist2) / restDensity;
+					sumGradient2 += dot(gradient, gradient);
+					gradientI -= gradient;
 				}
 			}
 

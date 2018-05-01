@@ -435,6 +435,7 @@ struct ParticleSolver
 														   devMasses,
 														   devPhases,
 														   fluidRestDensity,
+														   1.0f, // solid density scaling
 														   300.0f, // relaxation parameter
 														   devSortedCellId,
 														   devSortedParticleId,
