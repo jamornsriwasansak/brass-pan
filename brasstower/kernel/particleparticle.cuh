@@ -1,4 +1,4 @@
-#include "solverkernel/cubrasstower.cuh"
+#include "kernel/cubrasstower.cuh"
 
 // PROJECT CONSTRAINTS //
 
@@ -20,36 +20,36 @@ particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
 	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 
-	float3 xi = positions[i];
-	float3 xiPrev = newPositionsPrev[i];
+	const float3 xi = positions[i];
+	const float3 xiPrev = newPositionsPrev[i];
 	float3 sumDeltaXi = make_float3(0.f);
 	float3 sumFriction = make_float3(0.f);
-	float invMass = invMasses[i];
+	const float invMass = invMasses[i];
 
-	int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
-	int3 start = centerGridPos - 1;
-	int3 end = centerGridPos + 1;
+	const int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
+	const int3 start = centerGridPos - 1;
+	const int3 end = centerGridPos + 1;
 
 	int constraintCount = 0;
 	for (int z = start.z; z <= end.z; z++)
 		for (int y = start.y; y <= end.y; y++)
 			for (int x = start.x; x <= end.x; x++)
 			{
-				int3 gridPos = make_int3(x, y, z);
-				int gridAddress = calcGridAddress(gridPos, gridSize);
-				int bucketStart = cellStart[gridAddress];
+				const int3 gridPos = make_int3(x, y, z);
+				const int gridAddress = calcGridAddress(gridPos, gridSize);
+				const int bucketStart = cellStart[gridAddress];
 				if (bucketStart == -1) { continue; }
 
 				for (int k = 0; k + bucketStart < numParticles; k++)
 				{
-					int gridAddress2 = sortedCellId[bucketStart + k];
-					int particleId2 = sortedParticleId[bucketStart + k];
+					const int gridAddress2 = sortedCellId[bucketStart + k];
+					const int particleId2 = sortedParticleId[bucketStart + k];
 					if (gridAddress2 != gridAddress) { break; }
 
 					if (i != particleId2 && phases[i] != phases[particleId2])
 					{
-						float3 xjPrev = newPositionsPrev[particleId2];
-						float3 diff = xiPrev - xjPrev;
+						const float3 xjPrev = newPositionsPrev[particleId2];
+						const float3 diff = xiPrev - xjPrev;
 						float dist2 = length2(diff);
 						if (dist2 < radius * radius * 4.0f)
 						{

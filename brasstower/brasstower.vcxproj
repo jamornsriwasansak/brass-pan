@@ -104,8 +104,8 @@ copy /y /d $(SolutionDir)dependencies\bin\*.dll $(SolutionDir)sandbox</Command>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="solverkernel\cubrasstower.cuh" />
-    <ClInclude Include="solverkernel\fluid.cuh" />
+    <ClInclude Include="kernel\cubrasstower.cuh" />
+    <ClInclude Include="kernel\fluid.cuh" />
     <ClInclude Include="cuda\cudaglm.cuh" />
     <ClInclude Include="cuda\cudamatrix.cuh" />
     <ClInclude Include="cuda\helper.cuh" />
@@ -125,11 +125,11 @@ copy /y /d $(SolutionDir)dependencies\bin\*.dll $(SolutionDir)sandbox</Command>
     <ClInclude Include="opengl\shader.h" />
     <ClInclude Include="mesh.h" />
     <ClInclude Include="scene.h" />
-    <ClInclude Include="solverkernel\grid.cuh" />
-    <ClInclude Include="solverkernel\particleparticle.cuh" />
-    <ClInclude Include="solverkernel\particleplane.cuh" />
-    <ClInclude Include="solverkernel\shapematching.cuh" />
-    <ClInclude Include="solverkernel\util.cuh" />
+    <ClInclude Include="kernel\grid.cuh" />
+    <ClInclude Include="kernel\particleparticle.cuh" />
+    <ClInclude Include="kernel\particleplane.cuh" />
+    <ClInclude Include="kernel\shapematching.cuh" />
+    <ClInclude Include="kernel\util.cuh" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="imgui\imgui.cpp" />

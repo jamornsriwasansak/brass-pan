@@ -3,13 +3,13 @@
 #include <exception>
 #include <conio.h>
 
-#include "solverkernel/util.cuh"
-#include "solverkernel/grid.cuh"
+#include "kernel/util.cuh"
+#include "kernel/grid.cuh"
 
-#include "solverkernel/fluid.cuh"
-#include "solverkernel/particleplane.cuh"
-#include "solverkernel/particleparticle.cuh"
-#include "solverkernel/shapematching.cuh"
+#include "kernel/fluid.cuh"
+#include "kernel/particleplane.cuh"
+#include "kernel/particleparticle.cuh"
+#include "kernel/shapematching.cuh"
 
 // SOLVER //
 

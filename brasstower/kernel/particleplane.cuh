@@ -1,4 +1,4 @@
-#include "solverkernel/cubrasstower.cuh"
+#include "kernel/cubrasstower.cuh"
 
 __global__ void
 planeStabilize(float3 * __restrict__ positions,

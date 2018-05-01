@@ -1,10 +1,10 @@
-#include "solverkernel/cubrasstower.cuh"
+#include "kernel/cubrasstower.cuh"
 
 // Meshless Deformations Based on Shape Matching
 // by Muller et al.
 
 // one block per one shape
-#define NUM_MAX_PARTICLE_PER_RIGID_BODY 64
+
 __global__ void
 shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 					  float3 * __restrict__ CMs,

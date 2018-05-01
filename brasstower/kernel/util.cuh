@@ -1,5 +1,6 @@
-#include "solverkernel/cubrasstower.cuh"
+#include "kernel/cubrasstower.cuh"
 
+__inline__
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
 	*numThreads = 512;
@@ -7,6 +8,7 @@ void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 }
 
 template <typename T>
+__inline__
 void print(T * dev, int size)
 {
 	T * tmp = (T *)malloc(sizeof(T) * size);
@@ -22,6 +24,7 @@ void print(T * dev, int size)
 }
 
 template <>
+__inline__
 void print<float3>(float3 * dev, int size)
 {
 	float3 * tmp = (float3 *)malloc(sizeof(float3) * size);
@@ -37,6 +40,7 @@ void print<float3>(float3 * dev, int size)
 }
 
 template <typename T>
+__inline__
 void printPair(T * dev, int size)
 {
 	T * tmp = (T *)malloc(sizeof(T) * size);
@@ -56,13 +60,13 @@ void printPair(T * dev, int size)
 
 // PARTICLE SYSTEM //
 
-__global__ void
+__inline__ __global__ void
 increment(int * __restrict__ x)
 {
 	atomicAdd(x, 1);
 }
 
-__global__ void
+__inline__ __global__ void
 setDevArr_devIntPtr(int * __restrict__ devArr,
 					const int * __restrict__ value,
 					const int numValues)
@@ -72,7 +76,7 @@ setDevArr_devIntPtr(int * __restrict__ devArr,
 	devArr[i] = *value;
 }
 
-__global__ void
+__inline__ __global__ void
 setDevArr_int(int * __restrict__ devArr,
 			  const int value,
 			  const int numValues)
@@ -82,7 +86,7 @@ setDevArr_int(int * __restrict__ devArr,
 	devArr[i] = value;
 }
 
-__global__ void
+__inline__ __global__ void
 setDevArr_float(float * __restrict__ devArr,
 				const float value,
 				const int numValues)
@@ -92,7 +96,7 @@ setDevArr_float(float * __restrict__ devArr,
 	devArr[i] = value;
 }
 
-__global__ void
+__inline__ __global__ void
 setDevArr_int2(int2 * __restrict__ devArr,
 			   const int2 value,
 			   const int numValues)
@@ -102,7 +106,7 @@ setDevArr_int2(int2 * __restrict__ devArr,
 	devArr[i] = value;
 }
 
-__global__ void
+__inline__ __global__ void
 setDevArr_float3(float3 * __restrict__ devArr,
 				 const float3 val,
 				 const int numValues)
@@ -112,7 +116,7 @@ setDevArr_float3(float3 * __restrict__ devArr,
 	devArr[i] = val;
 }
 
-__global__ void
+__inline__ __global__ void
 setDevArr_float4(float4 * __restrict__ devArr,
 				 const float4 val,
 				 const int numValues)
@@ -122,7 +126,7 @@ setDevArr_float4(float4 * __restrict__ devArr,
 	devArr[i] = val;
 }
 
-__global__ void
+__inline__ __global__ void
 setDevArr_counterIncrement(int * __restrict__ devArr,
 						   int * counter,
 						   const int incrementValue,
@@ -133,7 +137,7 @@ setDevArr_counterIncrement(int * __restrict__ devArr,
 	devArr[i] = atomicAdd(counter, incrementValue);
 }
 
-__global__ void
+__inline__ __global__ void
 initPositionBox(float3 * __restrict__ positions,
 				int * __restrict__ phases,
 				int * phaseCounter,
