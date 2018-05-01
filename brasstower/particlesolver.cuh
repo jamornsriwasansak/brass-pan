@@ -93,6 +93,7 @@ struct ParticleSolver
 	{
 		fluidKernelRadius = 2.3f * scene->radius;
 		SetKernelRadius(fluidKernelRadius);
+		fluidPhaseCounter = -1;
 
 		// alloc particle vars
 		checkCudaErrors(cudaMalloc(&devPositions, scene->numMaxParticles * sizeof(float3)));
@@ -298,10 +299,11 @@ struct ParticleSolver
 		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
 												   1.0f / massPerParticle,
 												   numParticles);
-		// fluid phase is always -1
+		// fluid phase is always < 0
 		setDevArr_int<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
-												 -1,
+												 fluidPhaseCounter,
 												 numParticles);
+		fluidPhaseCounter -= 1;
 		scene->numParticles += numParticles;
 	}
 
@@ -447,6 +449,7 @@ struct ParticleSolver
 															 devNewPositions,
 															 devFluidLambdas,
 															 fluidRestDensity,
+															 devMasses,
 															 devPhases,
 															 0.0001f, // k for sCorr
 															 4, // N for sCorr
@@ -584,6 +587,7 @@ struct ParticleSolver
 	int *		devPhases;
 	int *		devSolidPhaseCounter;
 	float3 *	devOmegas;
+	int			fluidPhaseCounter;
 
 	float *		devFluidLambdas;
 	float *		devFluidDensities;
