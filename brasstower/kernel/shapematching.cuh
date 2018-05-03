@@ -23,25 +23,25 @@ shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	int numParticles = particleRange.y - particleRange.x;
 	int particleId = particleRange.x + threadIdx.x;
 
-	float3 position = positions[particleId];
-
 	__shared__ float3 CM;
 	__shared__ matrix3 extractedR;
 
-	if (threadIdx.x < numParticles)
-	{
-		// find center of mass using block reduce
-		float3 sumCM = BlockReduceFloat3(TempStorageFloat3).Sum(position);
+	// find center of mass using block reduce
+	float3 position = make_float3(0.f);
+	if (threadIdx.x < numParticles) { position = positions[particleId]; }
+	float3 sumCM = BlockReduceFloat3(TempStorageFloat3).Sum(position);
 
-		if (threadIdx.x == 0)
-		{
-			CM = sumCM / (float)numParticles;
-			CMs[rigidBodyId] = CM;
-		}
+	if (threadIdx.x == 0)
+	{
+		CM = sumCM / (float)numParticles;
+		CMs[rigidBodyId] = CM;
 	}
 	__syncthreads();
 
 	float3 qi;
+	float3 AiCol0 = make_float3(0.f);
+	float3 AiCol1 = make_float3(0.f);
+	float3 AiCol2 = make_float3(0.f);
 	if (threadIdx.x < numParticles)
 	{
 		// compute matrix Apq
@@ -49,44 +49,43 @@ shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 		float3 pi = position - CM;
 		qi = initialPosition;// do not needed to subtract from initialCM since initialCM = float3(0);
 
-							 // Matrix Ai refers to p * q
-		float3 AiCol0 = pi * qi.x;
-		float3 AiCol1 = pi * qi.y;
-		float3 AiCol2 = pi * qi.z;
+		// Matrix Ai refers to p * q
+		AiCol0 = pi * qi.x;
+		AiCol1 = pi * qi.y;
+		AiCol2 = pi * qi.z;
+	}
+	// Matrix A refers to Apq
+	float3 ACol0 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol0);
+	float3 ACol1 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol1);
+	float3 ACol2 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol2);
 
-		// Matrix A refers to Apq
-		float3 ACol0 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol0);
-		float3 ACol1 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol1);
-		float3 ACol2 = BlockReduceFloat3(TempStorageFloat3).Sum(AiCol2);
+	if (threadIdx.x == 0)
+	{
+		// extract rotation matrix using method 
+		// using A Robust Method to Extract the Rotational Part of Deformations
+		// by Muller et al.
 
-		if (threadIdx.x == 0)
+		quaternion q = rotations[rigidBodyId];
+		matrix3 R = extract_rotation_matrix3(q);
+		for (int i = 0; i < 20; i++)
 		{
-			// extract rotation matrix using method 
-			// using A Robust Method to Extract the Rotational Part of Deformations
-			// by Muller et al.
-
-			quaternion q = rotations[rigidBodyId];
 			matrix3 R = extract_rotation_matrix3(q);
-			for (int i = 0; i < 20; i++)
-			{
-				matrix3 R = extract_rotation_matrix3(q);
-				float3 omegaNumerator = (cross(R.col[0], ACol0) +
-										 cross(R.col[1], ACol1) +
-										 cross(R.col[2], ACol2));
-				float omegaDenominator = 1.0f / fabs(dot(R.col[0], ACol0) +
-													 dot(R.col[1], ACol1) +
-													 dot(R.col[2], ACol2)) + 1e-9f;
-				float3 omega = omegaNumerator * omegaDenominator;
-				float w2 = length2(omega);
-				if (w2 <= 1e-9f) { break; }
-				float w = sqrtf(w2);
+			float3 omegaNumerator = (cross(R.col[0], ACol0) +
+									 cross(R.col[1], ACol1) +
+									 cross(R.col[2], ACol2));
+			float omegaDenominator = 1.0f / fabs(dot(R.col[0], ACol0) +
+												 dot(R.col[1], ACol1) +
+												 dot(R.col[2], ACol2)) + 1e-9f;
+			float3 omega = omegaNumerator * omegaDenominator;
+			float w2 = length2(omega);
+			if (w2 <= 1e-9f) { break; }
+			float w = sqrtf(w2);
 
-				q = mul(angleAxis(omega / w, w), q);
-				q = normalize(q);
-			}
-			extractedR = extract_rotation_matrix3(q);
-			rotations[rigidBodyId] = q;
+			q = mul(angleAxis(omega / w, w), q);
+			q = normalize(q);
 		}
+		extractedR = extract_rotation_matrix3(q);
+		rotations[rigidBodyId] = q;
 	}
 	__syncthreads();
 
