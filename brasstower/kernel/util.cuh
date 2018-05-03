@@ -60,6 +60,14 @@ void printPair(T * dev, int size)
 
 // PARTICLE SYSTEM //
 
+__inline__ __device__ void
+atomicAdd(float3 * arr, int index, const float3 val)
+{
+	atomicAdd(&arr[index].x, val.x);
+	atomicAdd(&arr[index].y, val.y);
+	atomicAdd(&arr[index].z, val.z);
+}
+
 __inline__ __global__ void
 increment(int * __restrict__ x)
 {
@@ -135,6 +143,16 @@ setDevArr_counterIncrement(int * __restrict__ devArr,
 	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = atomicAdd(counter, incrementValue);
+}
+
+__inline__ __global__ void
+accDevArr_float3(float3 * __restrict__ devArr,
+				 const float3 * __restrict__ delta,
+				 const int numValues)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numValues) { return; }
+	devArr[i] += delta[i];
 }
 
 __inline__ __global__ void
