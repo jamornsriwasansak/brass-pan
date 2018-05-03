@@ -15,7 +15,6 @@
 
 __global__ void
 applyForces(float3 * __restrict__ velocities,
-			const float * __restrict__ invMass,
 			const int numParticles,
 			const float deltaTime)
 {
@@ -97,14 +96,14 @@ struct ParticleSolver
 
 		// alloc particle vars
 		checkCudaErrors(cudaMalloc(&devPositions, scene->numMaxParticles * sizeof(float3)));
-		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
-		checkCudaErrors(cudaMalloc(&devTempFloat3, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devMasses, scene->numMaxParticles * sizeof(float)));
-		checkCudaErrors(cudaMalloc(&devInvMasses, scene->numMaxParticles * sizeof(float)));
-		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
-		checkCudaErrors(cudaMalloc(&devOmegas, scene->numMaxParticles * sizeof(float3)));
+
+		checkCudaErrors(cudaMalloc(&devDeltaX, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devTempFloat3, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 
 		// set velocity
 		checkCudaErrors(cudaMemset(devVelocities, 0, scene->numMaxParticles * sizeof(float3)));
@@ -130,6 +129,7 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devCellStart, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
 
 		// alloc fluid vars
+		checkCudaErrors(cudaMalloc(&devFluidOmegas, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devFluidLambdas, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devFluidDensities, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devFluidNormals, scene->numMaxParticles * sizeof(float3)));
@@ -201,10 +201,6 @@ struct ParticleSolver
 		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
 												   massPerParticle,
 												   numParticles);	
-		// set invmasses
-		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
-												   1.0f / massPerParticle,
-												   numParticles);
 		// set phases
 		setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
 															  devSolidPhaseCounter,
@@ -254,11 +250,6 @@ struct ParticleSolver
 		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
 												   massPerParticle,
 												   numParticles);
-
-		// set inv masses
-		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
-												   1.0f / massPerParticle,
-												   numParticles);
 		// set phases
 		setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
 													   devSolidPhaseCounter,
@@ -295,10 +286,6 @@ struct ParticleSolver
 		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
 												   massPerParticle,
 												   numParticles);	
-		// set invmasses
-		setDevArr_float<<<numBlocks, numThreads>>>(devInvMasses + scene->numParticles,
-												   1.0f / massPerParticle,
-												   numParticles);
 		// fluid phase is always < 0
 		setDevArr_int<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
 												 fluidPhaseCounter,
@@ -354,7 +341,6 @@ struct ParticleSolver
 		for (int i = 0;i < numSubTimeStep;i++)
 		{ 
 			applyForces<<<numBlocks, numThreads>>>(devVelocities,
-												   devInvMasses,
 												   scene->numParticles,
 												   subDeltaTime);
 
@@ -412,8 +398,9 @@ struct ParticleSolver
 																					scene->radius);
 					}
 
-					/*// solving all particles collisions
-					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devTempNewPositions,
+					// solving all particles collisions
+					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devDeltaX,
 																				   devNewPositions,
 																				   devPositions,
 																				   devInvScaledMasses,
@@ -425,8 +412,8 @@ struct ParticleSolver
 																				   cellSize,
 																				   gridSize,
 																				   scene->numParticles,
-																				   scene->radius);*/
-					//std::swap(devTempNewPositions, devNewPositions);
+																				   scene->radius);
+					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
 
 					// fluid
 					fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
@@ -446,7 +433,8 @@ struct ParticleSolver
 														   fluidGridSearchOffset,
 														   scene->numParticles,
 														   useAkinciCohesionTension);
-					fluidPosition<<<numBlocks, numThreads>>>(devTempFloat3,
+					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+					fluidPosition<<<numBlocks, numThreads>>>(devDeltaX,
 															 devNewPositions,
 															 devFluidLambdas,
 															 fluidRestDensity,
@@ -463,7 +451,7 @@ struct ParticleSolver
 															 fluidGridSearchOffset,
 															 scene->numParticles,
 															 useAkinciCohesionTension);
-					std::swap(devTempFloat3, devNewPositions);
+					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
 
 					// solve all rigidbody constraints
 					if (scene->numRigidBodies > 0)
@@ -486,7 +474,7 @@ struct ParticleSolver
 			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, devPhases, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
 
 			// vorticity confinement part 1.
-			fluidOmega<<<numBlocks, numThreads>>>(devOmegas,
+			fluidOmega<<<numBlocks, numThreads>>>(devFluidOmegas,
 												  devVelocities,
 												  devNewPositions,
 												  devPhases,
@@ -501,7 +489,7 @@ struct ParticleSolver
 
 			// vorticity confinement part 2.
 			fluidVorticity<<<numBlocks, numThreads>>>(devVelocities,
-													  devOmegas,
+													  devFluidOmegas,
 													  devNewPositions,
 													  0.001f, // epsilon in eq. 16
 													  devPhases,
@@ -579,23 +567,25 @@ struct ParticleSolver
 	/// TODO:: implement object's destroyer
 
 	float3 *	devPositions;
-	float3 *	devNewPositions;
-	float3 *	devTempFloat3;
 	float3 *	devVelocities;
 	float *		devMasses;
-	float *		devInvMasses;
-	float *		devInvScaledMasses;
 	int *		devPhases;
+
+	float		fluidKernelRadius;
+	float		fluidRestDensity;
+
+	float3 *	devDeltaX;
+	float3 *	devNewPositions;
+	float3 *	devTempFloat3;
+	float *		devInvScaledMasses;
 	int *		devSolidPhaseCounter;
-	float3 *	devOmegas;
 	int			fluidPhaseCounter;
 
 	float *		devFluidLambdas;
 	float *		devFluidDensities;
 	float3 *	devFluidNormals;
 	int *		devFluidNeighboursIds;
-	float		fluidKernelRadius;
-	float		fluidRestDensity;
+	float3 *	devFluidOmegas;
 
 	int *		devSortedCellId;
 	int *		devSortedParticleId;

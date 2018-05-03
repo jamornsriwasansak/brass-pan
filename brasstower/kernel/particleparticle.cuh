@@ -3,7 +3,7 @@
 // PROJECT CONSTRAINTS //
 
 __global__ void
-particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
+particleParticleCollisionConstraint(float3 * deltaX,
 									const float3 * __restrict__ newPositionsPrev,
 									const float3 * __restrict__ positions,
 									const float * __restrict__ invMasses,
@@ -23,7 +23,7 @@ particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
 	const float3 xi = positions[i];
 	const float3 xiPrev = newPositionsPrev[i];
 	float3 sumDeltaXi = make_float3(0.f);
-	float3 sumFriction = make_float3(0.f);
+	float3 sumFrictionXi = make_float3(0.f);
 	const float invMass = invMasses[i];
 
 	const int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
@@ -43,33 +43,38 @@ particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
 				for (int k = 0; k + bucketStart < numParticles; k++)
 				{
 					const int gridAddress2 = sortedCellId[bucketStart + k];
-					const int particleId2 = sortedParticleId[bucketStart + k];
+					const int j = sortedParticleId[bucketStart + k];
 					if (gridAddress2 != gridAddress) { break; }
 
-					if (i != particleId2 && phases[i] != phases[particleId2])
+					if (i != j && phases[i] != phases[j])
 					{
-						const float3 xjPrev = newPositionsPrev[particleId2];
+						const float3 xjPrev = newPositionsPrev[j];
 						const float3 diff = xiPrev - xjPrev;
 						float dist2 = length2(diff);
 						if (dist2 < radius * radius * 4.0f)
 						{
 							float dist = sqrtf(dist2);
-							float invMass2 = invMasses[particleId2];
+							float invMass2 = invMasses[j];
 							float weight1 = invMass / (invMass + invMass2);
+							float weight2 = invMass2 / (invMass + invMass2);
 
 							float3 projectDir = diff * (2.0f * radius / dist - 1.0f);
+
+							// compute deltaXi
 							float3 deltaXi = weight1 * projectDir;
 							float3 xiStar = deltaXi + xiPrev;
 							sumDeltaXi += deltaXi;
 
+							// compute deltaXj
+							float3 deltaXj = -weight2 * projectDir;
+							//atomicAdd(deltaX, j, deltaXj);
 							float deltaXiLength2 = length2(deltaXi);
 
 							if (deltaXiLength2 > radius * radius * 0.001f * 0.001f)
 							{
 								constraintCount += 1;
 								float weight2 = invMass2 / (invMass + invMass2);
-								float3 xj = positions[particleId2];
-								float3 deltaXj = -weight2 * projectDir;
+								float3 xj = positions[j];
 								float3 xjStar = deltaXj + xjPrev;
 								float3 term1 = (xiStar - xi) - (xjStar - xj);
 								float3 n = diff / dist;
@@ -79,11 +84,11 @@ particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
 
 								if (tangentialDeltaXLength2 <= (FRICTION_STATIC * FRICTION_STATIC) * deltaXiLength2)
 								{
-									sumFriction -= weight1 * tangentialDeltaX;
+									sumFrictionXi -= weight1 * tangentialDeltaX;
 								}
 								else
 								{
-									sumFriction -= weight1 * tangentialDeltaX * min(FRICTION_DYNAMICS * sqrtf(deltaXiLength2 / tangentialDeltaXLength2), 1.0f);
+									sumFrictionXi -= weight1 * tangentialDeltaX * min(FRICTION_DYNAMICS * sqrtf(deltaXiLength2 / tangentialDeltaXLength2), 1.0f);
 								}
 							}
 						}
@@ -91,7 +96,13 @@ particleParticleCollisionConstraint(float3 * __restrict__ newPositionsNext,
 				}
 			}
 
-	newPositionsNext[i] = (constraintCount == 0) ?
-		xiPrev + sumDeltaXi :
-		xiPrev + sumDeltaXi + sumFriction / constraintCount; // averaging constraints is very important here. otherwise the solver will explode.
+	if (constraintCount == 0)
+	{
+		atomicAdd(deltaX, i, sumDeltaXi);
+	}
+	else
+	{
+		// averaging constraints is very important here. otherwise the solver will explode.
+		atomicAdd(deltaX, i, sumDeltaXi + sumFrictionXi / constraintCount);
+	}
 }

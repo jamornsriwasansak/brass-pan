@@ -197,6 +197,8 @@ std::shared_ptr<Scene> initFluidScene()
 	// mass per particle unimplemented
 	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 1.0f));
 	scene->fluidRestDensity = 1200.0f;
+
+	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 + 2, scene->radius + 2, 0), glm::vec3(scene->radius * 2.0f), 2.0f));
 	return scene;
 }
 

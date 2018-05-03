@@ -141,7 +141,7 @@ fluidLambda(float * __restrict__ lambdas,
 }
 
 __global__ void
-fluidPosition(float3 * __restrict__ newPositionsNext,
+fluidPosition(float3 * __restrict__ deltaX,
 			  const float3 * __restrict__ newPositionsPrev,
 			  const float * __restrict__ lambdas,
 			  const float restDensity,
@@ -198,7 +198,7 @@ fluidPosition(float3 * __restrict__ newPositionsNext,
 			}
 
 	const float3 deltaPosition = sum / restDensity;
-	newPositionsNext[i] = pi + deltaPosition;
+	atomicAdd(deltaX, i, deltaPosition);
 }
 
 /// TODO:: optimize this by plug it in last loop of fluidPosition
