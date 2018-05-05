@@ -75,9 +75,8 @@ fluidLambda(float * __restrict__ lambdas,
 			const float restDensity,
 			const float solidDensity,
 			const float epsilon,
-			const int * __restrict__ sortedCellId,
-			const int * __restrict__ sortedParticleId,
 			const int * __restrict__ cellStart,
+			const int * __restrict__ cellEnd,
 			const float3 cellOrigin,
 			const float3 cellSize,
 			const int3 gridSize,
@@ -105,15 +104,8 @@ fluidLambda(float * __restrict__ lambdas,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				const int bucketStart = cellStart[gridAddress];
-				if (bucketStart == -1) { continue; }
-
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
 				{
-					const int gridAddress2 = sortedCellId[bucketStart + k];
-					if (gridAddress2 != gridAddress) { break; }
-
-					const int j = sortedParticleId[bucketStart + k];
 					const float massj = masses[j];
 					const float3 pj = newPositionsPrev[j];
 					const float3 diff = pi - pj;
@@ -149,9 +141,8 @@ fluidPosition(float3 * __restrict__ deltaX,
 			  const int * __restrict__ phases,
 			  const float K,
 			  const int N,
-			  const int* __restrict__ sortedCellId,
-			  const int* __restrict__ sortedParticleId,
 			  const int* __restrict__ cellStart,
+			  const int * __restrict__ cellEnd,
 			  const float3 cellOrigin,
 			  const float3 cellSize,
 			  const int3 gridSize,
@@ -175,15 +166,8 @@ fluidPosition(float3 * __restrict__ deltaX,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				const int bucketStart = cellStart[gridAddress];
-				if (bucketStart == -1) { continue; }
-
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
 				{
-					const int gridAddress2 = sortedCellId[bucketStart + k];
-					if (gridAddress2 != gridAddress) { break; }
-
-					const int j = sortedParticleId[bucketStart + k];
 					if (i != j && phases[j] < 0)
 					{
 						const float massj = masses[j];
@@ -207,9 +191,8 @@ fluidOmega(float3 * __restrict__ omegas,
 		   const float3 * __restrict__ velocities,
 		   const float3 * __restrict__ positions,
 		   const int * __restrict__ phases,
-		   const int* __restrict__ sortedCellId,
-		   const int* __restrict__ sortedParticleId,
 		   const int* __restrict__ cellStart,
+		   const int * __restrict__ cellEnd,
 		   const float3 cellOrigin,
 		   const float3 cellSize,
 		   const int3 gridSize,
@@ -236,15 +219,8 @@ fluidOmega(float3 * __restrict__ omegas,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				const int bucketStart = cellStart[gridAddress];
-				if (bucketStart == -1) { continue; }
-
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
 				{
-					const int gridAddress2 = sortedCellId[bucketStart + k];
-					if (gridAddress2 != gridAddress) { break; }
-
-					int j = sortedParticleId[bucketStart + k];
 					if (i != j && phasei == phases[j])
 					{
 						const float3 pj = positions[j];
@@ -264,9 +240,8 @@ fluidVorticity(float3 * __restrict__ velocities,
 			   const float3 * __restrict__ positions,
 			   const float scalingFactor,
 			   const int * __restrict__ phases,
-			   const int* __restrict__ sortedCellId,
-			   const int* __restrict__ sortedParticleId,
 			   const int* __restrict__ cellStart,
+			   const int * __restrict__ cellEnd,
 			   const float3 cellOrigin,
 			   const float3 cellSize,
 			   const int3 gridSize,
@@ -294,15 +269,8 @@ fluidVorticity(float3 * __restrict__ velocities,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				const int bucketStart = cellStart[gridAddress];
-				if (bucketStart == -1) { continue; }
-
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
 				{
-					int gridAddress2 = sortedCellId[bucketStart + k];
-					if (gridAddress2 != gridAddress) { break; }
-
-					int j = sortedParticleId[bucketStart + k];
 					if (i != j && phasei == phases[j])
 					{
 						const float3 pj = positions[j];
@@ -327,9 +295,8 @@ fluidXSph(float3 * __restrict__ newVelocities,
 		  const float3 * __restrict__ positions,
 		  const float c, // position-based fluid eq. 17
 		  const int * __restrict__ phases,
-		  const int* __restrict__ sortedCellId,
-		  const int* __restrict__ sortedParticleId,
 		  const int* __restrict__ cellStart,
+		  const int * __restrict__ cellEnd,
 		  const float3 cellOrigin,
 		  const float3 cellSize,
 		  const int3 gridSize,
@@ -355,14 +322,8 @@ fluidXSph(float3 * __restrict__ newVelocities,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				const int bucketStart = cellStart[gridAddress];
-				if (bucketStart == -1) { continue; }
-
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
 				{
-					int gridAddress2 = sortedCellId[bucketStart + k];
-					if (gridAddress2 != gridAddress) { break; }
-					const int j = sortedParticleId[bucketStart + k];
 					if (i != j && phasei == phases[j])
 					{
 						float3 pj = positions[j];
@@ -379,9 +340,8 @@ fluidNormal(float3 * __restrict__ normals,
 			const float3 * __restrict__ positions,
 			const float * __restrict__ densities,
 			const int * __restrict__ phases,
-			const int* __restrict__ sortedCellId,
-			const int* __restrict__ sortedParticleId,
 			const int* __restrict__ cellStart,
+			const int * __restrict__ cellEnd,
 			const float3 cellOrigin,
 			const float3 cellSize,
 			const int3 gridSize,
@@ -407,14 +367,8 @@ fluidNormal(float3 * __restrict__ normals,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				const int bucketStart = cellStart[gridAddress];
-				if (bucketStart == -1) { continue; }
-
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
 				{
-					const int gridAddress2 = sortedCellId[bucketStart + k];
-					if (gridAddress2 != gridAddress) { break; }
-					const int j = sortedParticleId[bucketStart + k];
 					if (i != j && phasei == phases[j])
 					{
 						const float3 pj = positions[j];
@@ -436,9 +390,8 @@ fluidAkinciTension(float3 * __restrict__ newVelocities,
 				   const float restDensity,
 				   const int * __restrict__ phases,
 				   const float surfaceTension,
-				   const int* __restrict__ sortedCellId,
-				   const int* __restrict__ sortedParticleId,
 				   const int* __restrict__ cellStart,
+				   const int * __restrict__ cellEnd,
 				   const float3 cellOrigin,
 				   const float3 cellSize,
 				   const int3 gridSize,
@@ -465,14 +418,8 @@ fluidAkinciTension(float3 * __restrict__ newVelocities,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				const int bucketStart = cellStart[gridAddress];
-				if (bucketStart == -1) { continue; }
-
-				for (int k = 0; k < NUM_MAX_PARTICLE_PER_CELL && k + bucketStart < numParticles; k++)
+				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
 				{
-					const int gridAddress2 = sortedCellId[bucketStart + k];
-					if (gridAddress2 != gridAddress) { break; }
-					const int j = sortedParticleId[bucketStart + k];
 					if (i != j && phasei == phases[j])
 					{
 						const float3 pj = positions[j];

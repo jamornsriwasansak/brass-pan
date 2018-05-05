@@ -453,7 +453,6 @@ struct ParticleSolver
 																			   scene->radius);
 				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
 
-				/*
 				// fluid
 				fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
 													   devFluidDensities,
@@ -463,9 +462,8 @@ struct ParticleSolver
 													   fluidRestDensity,
 													   1.0f, // solid density scaling
 													   300.0f, // relaxation parameter
-													   devSortedCellId,
-													   devSortedParticleId,
 													   devCellStart,
+													   devCellEnd,
 													   cellOrigin,
 													   cellSize,
 													   gridSize,
@@ -482,9 +480,8 @@ struct ParticleSolver
 														 devPhases,
 														 0.0001f, // k for sCorr
 														 4, // N for sCorr
-														 devSortedCellId,
-														 devSortedParticleId,
 														 devCellStart,
+														 devCellEnd,
 														 cellOrigin,
 														 cellSize,
 														 gridSize,
@@ -502,7 +499,6 @@ struct ParticleSolver
 																									  devRigidBodyInitialPositions,
 																									  devRigidBodyParticleIdRange);
 				}
-				*/
 			}
 
 			updateVelocity<<<numBlocks, numThreads>>>(devVelocities,
@@ -513,15 +509,13 @@ struct ParticleSolver
 
 			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, devPhases, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
 
-			/*
 			// vorticity confinement part 1.
 			fluidOmega<<<numBlocks, numThreads>>>(devFluidOmegas,
 												  devVelocities,
 												  devNewPositions,
 												  devPhases,
-												  devSortedCellId,
-												  devSortedParticleId,
 												  devCellStart,
+												  devCellEnd,
 												  cellOrigin,
 												  cellSize,
 												  gridSize,
@@ -534,9 +528,8 @@ struct ParticleSolver
 													  devNewPositions,
 													  0.001f, // epsilon in eq. 16
 													  devPhases,
-													  devSortedCellId,
-													  devSortedParticleId,
 													  devCellStart,
+													  devCellEnd,
 													  cellOrigin,
 													  cellSize,
 													  gridSize,
@@ -551,9 +544,8 @@ struct ParticleSolver
 													   devNewPositions,
 													   devFluidDensities,
 													   devPhases,
-													   devSortedCellId,
-													   devSortedParticleId,
 													   devCellStart,
+													   devCellEnd,
 													   cellOrigin,
 													   cellSize,
 													   gridSize,
@@ -568,9 +560,8 @@ struct ParticleSolver
 															  fluidRestDensity,
 															  devPhases,
 															  0.6, // tension strength
-															  devSortedCellId,
-															  devSortedParticleId,
 															  devCellStart,
+															  devCellEnd,
 															  cellOrigin,
 															  cellSize,
 															  gridSize,
@@ -586,16 +577,15 @@ struct ParticleSolver
 												 devNewPositions,
 												 0.0002f, // C in eq. 17
 												 devPhases,
-												 devSortedCellId,
-												 devSortedParticleId,
 												 devCellStart,
+												 devCellEnd,
 												 cellOrigin,
 												 cellSize,
 												 gridSize,
 												 fluidGridSearchOffset,
 												 scene->numParticles);
 			std::swap(devVelocities, devTempFloat3);
-			*/
+
 			resetGrid(numBlocks, numThreads);
 		}
 
