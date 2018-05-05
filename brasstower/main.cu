@@ -153,7 +153,7 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->camera = Camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight),
 
 	//scene->granulars.push_back(glm::vec3(1, 1, 1));
-	scene->granulars.push_back(Granulars::CreateGranularsBlock(glm::ivec3(30, 50, 30), glm::vec3(-6, scene->radius, -6), glm::vec3(scene->radius * 2.0f), 1.0f));
+	scene->granulars.push_back(Granulars::CreateGranularsBlock(glm::ivec3(30, 50, 30), glm::vec3(0, scene->radius, 0), glm::vec3(scene->radius * 2.0f), 1.0f));
 	/*scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 2.0f));
 	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(BlackBoardColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 1, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.5f));
 	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(GrainColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 3, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.0f));
@@ -223,7 +223,7 @@ int main()
 	cudaGLSetGLDevice(0);
 	window = InitGL(windowWidth, windowHeight);
 
-	scene = initFluidScene();
+	scene = initSimpleScene();
 	renderer = new ParticleRenderer(glm::uvec2(windowWidth, windowHeight), scene);
 	solver = new ParticleSolver(scene);
 

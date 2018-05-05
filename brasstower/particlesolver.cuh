@@ -88,20 +88,30 @@ struct ParticleSolver
 		scene(scene),
 		cellOrigin(make_float3(-4.01, -1.01, -5.01)),
 		cellSize(make_float3(scene->radius * 2.3f)),
-		gridSize(make_int3(512))
+		gridSize(make_int3(256))
 	{
 		fluidKernelRadius = 2.3f * scene->radius;
 		SetKernelRadius(fluidKernelRadius);
 		fluidPhaseCounter = -1;
 
+		///TODO:: implement memory manager for efficient memory reusing.
+
 		// alloc particle vars
+		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devOriginalIds, scene->numMaxParticles * sizeof(int)));
+
+		checkCudaErrors(cudaMalloc(&devSortedNewPositions, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devSortedPositions, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devSortedVelocities, scene->numMaxParticles * sizeof(float3)));
+		checkCudaErrors(cudaMalloc(&devSortedMasses, scene->numMaxParticles * sizeof(float)));
+		checkCudaErrors(cudaMalloc(&devSortedPhases, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devSortedOriginalIds, scene->numMaxParticles * sizeof(int)));
 
 		checkCudaErrors(cudaMalloc(&devDeltaX, scene->numMaxParticles * sizeof(float3)));
-		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devTempFloat3, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 
@@ -127,6 +137,12 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devSortedCellId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devSortedParticleId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devCellStart, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devCellEnd, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
+		int numCellBlocks, numCellThreads;
+		int numCells = gridSize.x * gridSize.y * gridSize.z;
+		GetNumBlocksNumThreads(&numCellBlocks, &numCellThreads, numCells);
+		setDevArr_int<<<numCellBlocks, numCellThreads>>>(devCellStart, -1, numCells);
+		setDevArr_int<<<numCellBlocks, numCellThreads>>>(devCellEnd, -1, numCells);
 
 		// alloc fluid vars
 		checkCudaErrors(cudaMalloc(&devFluidOmegas, scene->numMaxParticles * sizeof(float3)));
@@ -296,7 +312,6 @@ struct ParticleSolver
 
 	void updateGrid(int numBlocks, int numThreads)
 	{
-		setDevArr_int<<<numBlocks, numThreads>>>(devCellStart, -1, scene->numMaxParticles);
 		updateGridId<<<numBlocks, numThreads>>>(devCellId,
 												devParticleId,
 												devNewPositions,
@@ -322,7 +337,34 @@ struct ParticleSolver
 										devParticleId,
 										devSortedParticleId,
 										scene->numParticles);
-		findStartId<<<numBlocks, numThreads>>>(devCellStart, devSortedCellId, scene->numParticles);
+		findStartEndId<<<numBlocks, numThreads>>>(devCellStart, devCellEnd, devSortedCellId, scene->numParticles);
+
+		reorderParticlesData<<<numBlocks, numThreads>>>(devSortedNewPositions,
+														devSortedPositions,
+														devSortedVelocities,
+														devSortedMasses,
+														devSortedPhases,
+														devSortedOriginalIds,
+														devNewPositions,
+														devPositions,
+														devVelocities,
+														devMasses,
+														devPhases,
+														devOriginalIds,
+														devSortedParticleId,
+														scene->numParticles);
+
+		std::swap(devSortedNewPositions, devNewPositions);
+		std::swap(devSortedPositions, devPositions);
+		std::swap(devSortedVelocities, devVelocities);
+		std::swap(devSortedMasses, devMasses);
+		std::swap(devSortedPhases, devPhases);
+		std::swap(devSortedOriginalIds, devOriginalIds);
+	}
+
+	void resetGrid(int numBlocks, int numThreads)
+	{
+		resetStartEndId<<<numBlocks, numThreads>>>(devCellStart, devCellEnd, devSortedCellId, scene->numParticles);
 	}
 
 	void update(const int numSubTimeStep,
@@ -356,6 +398,8 @@ struct ParticleSolver
 														scene->numParticles,
 														subDeltaTime);
 
+			// compute grid
+			updateGrid(numBlocks, numThreads);
 
 			// compute scaled masses
 			computeInvScaledMasses<<<numBlocks, numThreads>>>(devInvScaledMasses,
@@ -380,89 +424,85 @@ struct ParticleSolver
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
-			for (int i = 0; i < 1; i++)
+			for (int j = 0; j < 2; j++)
 			{
-				// compute grid
-				updateGrid(numBlocks, numThreads);
-
-				for (int j = 0; j < 2; j++)
+				// solving all plane collisions
+				for (const Plane & plane : scene->planes)
 				{
-					// solving all plane collisions
-					for (const Plane & plane : scene->planes)
-					{
-						particlePlaneCollisionConstraint<<<numBlocks, numThreads>>>(devNewPositions,
-																					devPositions,
-																					scene->numParticles,
-																					make_float3(plane.origin),
-																					make_float3(plane.normal),
-																					scene->radius);
-					}
-
-					// solving all particles collisions
-					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
-					particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devDeltaX,
-																				   devNewPositions,
-																				   devPositions,
-																				   devInvScaledMasses,
-																				   devPhases,
-																				   devSortedCellId,
-																				   devSortedParticleId,
-																				   devCellStart,
-																				   cellOrigin,
-																				   cellSize,
-																				   gridSize,
-																				   scene->numParticles,
-																				   scene->radius);
-					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-
-					// fluid
-					fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
-														   devFluidDensities,
-														   devNewPositions,
-														   devMasses,
-														   devPhases,
-														   fluidRestDensity,
-														   1.0f, // solid density scaling
-														   300.0f, // relaxation parameter
-														   devSortedCellId,
-														   devSortedParticleId,
-														   devCellStart,
-														   cellOrigin,
-														   cellSize,
-														   gridSize,
-														   fluidGridSearchOffset,
-														   scene->numParticles,
-														   useAkinciCohesionTension);
-					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
-					fluidPosition<<<numBlocks, numThreads>>>(devDeltaX,
-															 devNewPositions,
-															 devFluidLambdas,
-															 fluidRestDensity,
-															 devMasses,
-															 devPhases,
-															 0.0001f, // k for sCorr
-															 4, // N for sCorr
-															 devSortedCellId,
-															 devSortedParticleId,
-															 devCellStart,
-															 cellOrigin,
-															 cellSize,
-															 gridSize,
-															 fluidGridSearchOffset,
-															 scene->numParticles,
-															 useAkinciCohesionTension);
-					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-
-					// solve all rigidbody constraints
-					if (scene->numRigidBodies > 0)
-					{ 
-						shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
-																										  devRigidBodyCMs,
-																										  devNewPositions,
-																										  devRigidBodyInitialPositions,
-																										  devRigidBodyParticleIdRange);
-					}
+					particlePlaneCollisionConstraint<<<numBlocks, numThreads>>>(devNewPositions,
+																				devPositions,
+																				scene->numParticles,
+																				make_float3(plane.origin),
+																				make_float3(plane.normal),
+																				scene->radius);
 				}
+
+				// solving all particles collisions
+				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+				particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devDeltaX,
+																			   devNewPositions,
+																			   devPositions,
+																			   devInvScaledMasses,
+																			   devPhases,
+																			   devCellStart,
+																			   devCellEnd,
+																			   cellOrigin,
+																			   cellSize,
+																			   gridSize,
+																			   scene->numParticles,
+																			   scene->radius);
+				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+
+				/*
+				// fluid
+				fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
+													   devFluidDensities,
+													   devNewPositions,
+													   devMasses,
+													   devPhases,
+													   fluidRestDensity,
+													   1.0f, // solid density scaling
+													   300.0f, // relaxation parameter
+													   devSortedCellId,
+													   devSortedParticleId,
+													   devCellStart,
+													   cellOrigin,
+													   cellSize,
+													   gridSize,
+													   fluidGridSearchOffset,
+													   scene->numParticles,
+													   useAkinciCohesionTension);
+
+				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+				fluidPosition<<<numBlocks, numThreads>>>(devDeltaX,
+														 devNewPositions,
+														 devFluidLambdas,
+														 fluidRestDensity,
+														 devMasses,
+														 devPhases,
+														 0.0001f, // k for sCorr
+														 4, // N for sCorr
+														 devSortedCellId,
+														 devSortedParticleId,
+														 devCellStart,
+														 cellOrigin,
+														 cellSize,
+														 gridSize,
+														 fluidGridSearchOffset,
+														 scene->numParticles,
+														 useAkinciCohesionTension);
+				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+
+				// solve all rigidbody constraints
+				if (scene->numRigidBodies > 0)
+				{ 
+					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
+																									  devRigidBodyCMs,
+																									  devNewPositions,
+																									  devRigidBodyInitialPositions,
+																									  devRigidBodyParticleIdRange);
+				}
+				*/
 			}
 
 			updateVelocity<<<numBlocks, numThreads>>>(devVelocities,
@@ -473,6 +513,7 @@ struct ParticleSolver
 
 			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, devPhases, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
 
+			/*
 			// vorticity confinement part 1.
 			fluidOmega<<<numBlocks, numThreads>>>(devFluidOmegas,
 												  devVelocities,
@@ -554,6 +595,8 @@ struct ParticleSolver
 												 fluidGridSearchOffset,
 												 scene->numParticles);
 			std::swap(devVelocities, devTempFloat3);
+			*/
+			resetGrid(numBlocks, numThreads);
 		}
 
 		// we need to make picked particle immovable
@@ -566,16 +609,24 @@ struct ParticleSolver
 
 	/// TODO:: implement object's destroyer
 
+	float3 *	devNewPositions;
 	float3 *	devPositions;
 	float3 *	devVelocities;
 	float *		devMasses;
 	int *		devPhases;
+	int *		devOriginalIds;
+
+	float3 *	devSortedNewPositions;
+	float3 *	devSortedPositions;
+	float3 *	devSortedVelocities;
+	float *		devSortedMasses;
+	int *		devSortedPhases;
+	int *		devSortedOriginalIds;
 
 	float		fluidKernelRadius;
 	float		fluidRestDensity;
 
 	float3 *	devDeltaX;
-	float3 *	devNewPositions;
 	float3 *	devTempFloat3;
 	float *		devInvScaledMasses;
 	int *		devSolidPhaseCounter;
@@ -584,7 +635,6 @@ struct ParticleSolver
 	float *		devFluidLambdas;
 	float *		devFluidDensities;
 	float3 *	devFluidNormals;
-	int *		devFluidNeighboursIds;
 	float3 *	devFluidOmegas;
 
 	int *		devSortedCellId;
@@ -601,6 +651,7 @@ struct ParticleSolver
 	int *			devCellId;
 	int *			devParticleId;
 	int *			devCellStart;
+	int *			devCellEnd;
 	const float3	cellOrigin;
 	const float3	cellSize;
 	const int3		gridSize;

@@ -8,9 +8,8 @@ particleParticleCollisionConstraint(float3 * deltaX,
 									const float3 * __restrict__ positions,
 									const float * __restrict__ invMasses,
 									const int* __restrict__ phases,
-									const int* __restrict__ sortedCellId,
-									const int* __restrict__ sortedParticleId,
 									const int* __restrict__ cellStart,
+									const int* __restrict__ cellEnd,
 									const float3 cellOrigin,
 									const float3 cellSize,
 									const int3 gridSize,
@@ -37,15 +36,8 @@ particleParticleCollisionConstraint(float3 * deltaX,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				const int bucketStart = cellStart[gridAddress];
-				if (bucketStart == -1) { continue; }
-
-				for (int k = 0; k + bucketStart < numParticles; k++)
+				for (int j = cellStart[gridAddress];j < cellEnd[gridAddress];j++)
 				{
-					const int gridAddress2 = sortedCellId[bucketStart + k];
-					const int j = sortedParticleId[bucketStart + k];
-					if (gridAddress2 != gridAddress) { break; }
-
 					if (i != j && phases[i] != phases[j])
 					{
 						const float3 xjPrev = newPositionsPrev[j];
