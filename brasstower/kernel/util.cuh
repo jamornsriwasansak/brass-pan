@@ -3,7 +3,7 @@
 __inline__
 void GetNumBlocksNumThreads(int * numBlocks, int * numThreads, int k)
 {
-	*numThreads = 512;
+	*numThreads = 256;
 	*numBlocks = static_cast<int>(ceil((float)k / (float)(*numThreads)));
 }
 
