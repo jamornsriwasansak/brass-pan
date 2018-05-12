@@ -189,6 +189,10 @@ fluidPosition(float3 * __restrict__ deltaXs,
 	const int3 searchStart = centerGridPos - gridSearchOffset;
 	const int3 searchEnd = centerGridPos + gridSearchOffset;
 
+	const float massi = masses[i];
+	const float lambdai = lambdas[i];
+	const float invRestDensity = 1.0f / restDensity;
+
 	for (int z = searchStart.z; z <= searchEnd.z; z++)
 		for (int y = searchStart.y; y <= searchEnd.y; y++)
 			for (int x = searchStart.x; x <= searchEnd.x; x++)
@@ -199,7 +203,7 @@ fluidPosition(float3 * __restrict__ deltaXs,
 				int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart; j < neighbourEnd; j++)
 				{
-					if (i != j && phases[j] < 0)
+					if (i < j && phases[j] < 0)
 					{
 						const float3 pj = newPositionsPrev[j];
 						const float3 diff = pi - pj;
@@ -207,24 +211,26 @@ fluidPosition(float3 * __restrict__ deltaXs,
 						if (dist2 <= KernelSquaredRadius && dist2 > 0)
 						{
 							const float massj = masses[j];
-							float sumLambda = lambdas[i] + lambdas[j];
+							float sumLambda = lambdai + lambdas[j];
 							if (!useAkinciCohesionTension) sumLambda += -K * powf(poly6Kernel(dist2) / poly6Kernel(powf(0.03f * KernelRadius, 2.f)), N);
-							float3 deltaX = massj * sumLambda * gradientSpikyKernel(pi - pj, dist2);
+							float3 delta = sumLambda * gradientSpikyKernel(diff, dist2);
 
+						#if 1
 							// clamp deltaposition to increase solver stability
 							// good parameters can trade-off realism for performance
-						#if 1
-							float lenMove = length(deltaX);
-							deltaX = (lenMove < 5.0f) ? deltaX : deltaX * min(lenMove, 5.0f) / lenMove;
+							const float clamping = 5.0f;
+							const float lenMove = length(delta);
+							delta = (lenMove < clamping) ? delta : delta * min(lenMove, clamping) / lenMove;
 						#endif
 
-							sum += deltaX;
+							sum += massj * delta;
+							atomicAdd(deltaXs, j, -massi * delta * invRestDensity);
 						}
 					}
 				}
 			}
 
-	const float3 deltaPosition = sum / restDensity;
+	const float3 deltaPosition = sum * invRestDensity;
 	atomicAdd(deltaXs, i, deltaPosition);
 }
 
