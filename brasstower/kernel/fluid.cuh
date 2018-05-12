@@ -66,6 +66,8 @@ const float akinciSplineC(const float r) // akinci used 2*r instead of r
 	return 0.f;
 }
 
+#define USE_PRECOMPUTED_FLUID
+
 __global__ void
 fluidLambda(float * __restrict__ lambdas,
 			float * __restrict__ densities,
@@ -92,7 +94,9 @@ fluidLambda(float * __restrict__ lambdas,
 	// compute density and gradient of constraint
 	float density = 0.f;
 	float3 gradientI = make_float3(0.f);
+#ifndef USE_PRECOMPUTED_FLUID
 	float sumGradient2 = 0.f;
+#endif
 
 	const int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
 	const int3 start = centerGridPos - gridSearchOffset;
@@ -104,36 +108,51 @@ fluidLambda(float * __restrict__ lambdas,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
+				int start = cellStart[gridAddress];
+				int end = cellEnd[gridAddress];
+				for (int j = start; j < end; j++)
 				{
-					const float massj = masses[j];
-					const float3 pj = newPositionsPrev[j];
-					const float3 diff = pi - pj;
-					const float dist2 = length2(pi - pj);
+					if (i <= j)
+					{
+						const float massj = masses[j];
+						const float3 pj = newPositionsPrev[j];
+						const float3 diff = pi - pj;
+						const float dist2 = length2(pi - pj);
 
-					// density
-					const float liquidDensity = massj * poly6Kernel(dist2);
-					density += (phases[j] < 0) ? liquidDensity : solidDensity * liquidDensity;
+						// density
+						const float liquidDensity = massj * poly6Kernel(dist2);
+						density += (phases[j] < 0) ? liquidDensity : solidDensity * liquidDensity;
 
-					// gradient for lambda
-					const float3 gradient = - massj * gradientSpikyKernel(diff, dist2) / restDensity;
-					sumGradient2 += dot(gradient, gradient);
-					gradientI -= gradient;
+					#ifndef USE_PRECOMPUTED_FLUID
+						// gradient for lambda
+						const float3 gradient = -massj * gradientSpikyKernel(diff, dist2) / restDensity;
+						sumGradient2 += dot(gradient, gradient);
+						gradientI -= gradient;
+					#endif
+					}
 				}
 			}
 
+#ifndef USE_PRECOMPUTED_FLUID
 	sumGradient2 += dot(gradientI, gradientI);
+#endif
+
 
 	// compute constraint
 	float constraint = density / restDensity - 1.0f;
 	if (useAkinciCohesionTension) { constraint = max(constraint, 0.0f); }
+#ifdef USE_PRECOMPUTED_FLUID
+	// 10000 ~ approximate of sumGradient * mass * epsilon
+	const float lambda = -constraint / 15000.0f;
+#else
 	const float lambda = -constraint / (sumGradient2 + epsilon);
+#endif
 	lambdas[i] = lambda;
 	densities[i] = density;
 }
 
 __global__ void
-fluidPosition(float3 * __restrict__ deltaX,
+fluidPosition(float3 * __restrict__ deltaXs,
 			  const float3 * __restrict__ newPositionsPrev,
 			  const float * __restrict__ lambdas,
 			  const float restDensity,
@@ -166,7 +185,9 @@ fluidPosition(float3 * __restrict__ deltaX,
 			{
 				const int3 gridPos = make_int3(x, y, z);
 				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
+				int start = cellStart[gridAddress];
+				int end = cellEnd[gridAddress];
+				for (int j = start; j < end; j++)
 				{
 					if (i != j && phases[j] < 0)
 					{
@@ -176,13 +197,22 @@ fluidPosition(float3 * __restrict__ deltaX,
 						const float3 diff = pi - pj;
 						const float dist2 = length2(diff);
 						if (!useAkinciCohesionTension) sumLambda += -K * powf(poly6Kernel(dist2) / poly6Kernel(powf(0.03f * KernelRadius, 2.f)), N);
-						sum += massj * sumLambda * gradientSpikyKernel(pi - pj, dist2);
+						float3 deltaX = massj * sumLambda * gradientSpikyKernel(pi - pj, dist2);
+
+						// clamp deltaposition to increase solver stability
+						// good parameters can trade-off realism for performance
+					#if 1
+						float lenMove = length(deltaX);
+						deltaX = (lenMove < 5.0f) ? deltaX : deltaX * min(lenMove, 5.0f) / lenMove;
+					#endif
+
+						sum += deltaX;
 					}
 				}
 			}
 
 	const float3 deltaPosition = sum / restDensity;
-	atomicAdd(deltaX, i, deltaPosition);
+	atomicAdd(deltaXs, i, deltaPosition);
 }
 
 /// TODO:: optimize this by plug it in last loop of fluidPosition

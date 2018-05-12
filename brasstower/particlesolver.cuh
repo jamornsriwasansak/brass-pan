@@ -88,7 +88,7 @@ struct ParticleSolver
 		scene(scene),
 		cellOrigin(make_float3(-4.01, -1.01, -5.01)),
 		cellSize(make_float3(scene->radius * 2.3f)),
-		gridSize(make_int3(256))
+		gridSize(make_int3(512))
 	{
 		fluidKernelRadius = 2.3f * scene->radius;
 		SetKernelRadius(fluidKernelRadius);
@@ -424,7 +424,7 @@ struct ParticleSolver
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
-			for (int j = 0; j < 2; j++)
+			for (int j = 0; j < 3; j++)
 			{
 				// solving all plane collisions
 				for (const Plane & plane : scene->planes)
@@ -559,7 +559,7 @@ struct ParticleSolver
 															  devFluidDensities,
 															  fluidRestDensity,
 															  devPhases,
-															  0.6, // tension strength
+															  0.1, // tension strength
 															  devCellStart,
 															  devCellEnd,
 															  cellOrigin,
