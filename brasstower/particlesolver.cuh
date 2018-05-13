@@ -102,14 +102,18 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devPhases, scene->numMaxParticles * sizeof(int)));
-		checkCudaErrors(cudaMalloc(&devOriginalIds, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devMapToOriginalIds, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devMapToNewIds, scene->numMaxParticles * sizeof(int)));
+		int numBlocksMax, numThreadsMax;
+		GetNumBlocksNumThreads(&numBlocksMax, &numThreadsMax, scene->numMaxParticles);
+		initOrder_int<<<numBlocksMax, numThreadsMax>>>(devMapToOriginalIds, scene->numMaxParticles);
 
 		checkCudaErrors(cudaMalloc(&devSortedNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devSortedPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devSortedVelocities, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devSortedMasses, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devSortedPhases, scene->numMaxParticles * sizeof(int)));
-		checkCudaErrors(cudaMalloc(&devSortedOriginalIds, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devSortedMapToOriginalIds, scene->numMaxParticles * sizeof(int)));
 
 		checkCudaErrors(cudaMalloc(&devDeltaX, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devTempFloat3, scene->numMaxParticles * sizeof(float3)));
@@ -346,13 +350,13 @@ struct ParticleSolver
 														devSortedVelocities,
 														devSortedMasses,
 														devSortedPhases,
-														devSortedOriginalIds,
+														devSortedMapToOriginalIds,
 														devNewPositions,
 														devPositions,
 														devVelocities,
 														devMasses,
 														devPhases,
-														devOriginalIds,
+														devMapToOriginalIds,
 														devSortedParticleId,
 														scene->numParticles);
 
@@ -361,7 +365,7 @@ struct ParticleSolver
 		std::swap(devSortedVelocities, devVelocities);
 		std::swap(devSortedMasses, devMasses);
 		std::swap(devSortedPhases, devPhases);
-		std::swap(devSortedOriginalIds, devOriginalIds);
+		std::swap(devSortedMapToOriginalIds, devMapToOriginalIds);
 	}
 
 	void resetGrid(int numBlocks, int numThreads)
@@ -402,6 +406,8 @@ struct ParticleSolver
 
 			// compute grid
 			updateGrid(numBlocks, numThreads);
+
+			inverseMapping<<<numBlocks, numThreads>>>(devMapToNewIds, devMapToOriginalIds, scene->numParticles);
 
 			// compute scaled masses
 			computeInvScaledMasses<<<numBlocks, numThreads>>>(devInvScaledMasses,
@@ -487,6 +493,7 @@ struct ParticleSolver
 					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
 																									  devRigidBodyCMs,
 																									  devNewPositions,
+																									  devMapToNewIds,
 																									  devRigidBodyInitialPositions,
 																									  devRigidBodyParticleIdRange);
 				}
@@ -575,14 +582,16 @@ struct ParticleSolver
 	float3 *	devVelocities;
 	float *		devMasses;
 	int *		devPhases;
-	int *		devOriginalIds;
+	int *		devMapToOriginalIds;
+	int *		devMapToNewIds;
+	int *		devNewIds;
 
 	float3 *	devSortedNewPositions;
 	float3 *	devSortedPositions;
 	float3 *	devSortedVelocities;
 	float *		devSortedMasses;
 	int *		devSortedPhases;
-	int *		devSortedOriginalIds;
+	int *		devSortedMapToOriginalIds;
 
 	float		fluidKernelRadius;
 	float		fluidRestDensity;

@@ -150,12 +150,12 @@ reorderParticlesData(float3 * __restrict__ sortedNewPositions,
 	const int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 
-	int originalIndex = indices[i];
+	int oldIndex = indices[i];
 
-	sortedNewPositions[i] = newPositions[originalIndex];
-	sortedPositions[i] = positions[originalIndex];
-	sortedVelocities[i] = velocities[originalIndex];
-	sortedMasses[i] = masses[originalIndex];
-	sortedPhases[i] = phases[originalIndex];
-	sortedOriginalIds[i] = originalIds[originalIndex];
+	sortedNewPositions[i] = newPositions[oldIndex];
+	sortedPositions[i] = positions[oldIndex];
+	sortedVelocities[i] = velocities[oldIndex];
+	sortedMasses[i] = masses[oldIndex];
+	sortedPhases[i] = phases[oldIndex];
+	sortedOriginalIds[i] = originalIds[oldIndex];
 }

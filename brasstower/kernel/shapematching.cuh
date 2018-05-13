@@ -9,6 +9,7 @@ __global__ void
 shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 					  float3 * __restrict__ CMs,
 					  float3 * __restrict__ positions,
+					  const int * __restrict__ newIds,
 					  const float3 * __restrict__ initialPositions,
 					  const int2 * __restrict__ rigidBodyParticleIdRange)
 {
@@ -21,7 +22,8 @@ shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	int2 particleRange = rigidBodyParticleIdRange[rigidBodyId];
 
 	int numParticles = particleRange.y - particleRange.x;
-	int particleId = particleRange.x + threadIdx.x;
+	int id = particleRange.x + threadIdx.x;
+	int particleId = newIds[id];
 
 	__shared__ float3 CM;
 	__shared__ matrix3 extractedR;
@@ -45,7 +47,7 @@ shapeMatchingAlphaOne(quaternion * __restrict__ rotations,
 	if (threadIdx.x < numParticles)
 	{
 		// compute matrix Apq
-		float3 initialPosition = initialPositions[particleId];
+		float3 initialPosition = initialPositions[id];
 		float3 pi = position - CM;
 		qi = initialPosition;// do not needed to subtract from initialCM since initialCM = float3(0);
 

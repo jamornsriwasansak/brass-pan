@@ -11,8 +11,26 @@ template <typename T>
 __inline__
 void print(T * dev, int size)
 {
+	cudaDeviceSynchronize();
 	T * tmp = (T *)malloc(sizeof(T) * size);
 	cudaMemcpy(tmp, dev, sizeof(T) * size, cudaMemcpyDeviceToHost);
+	for (int i = 0; i < size; i++)
+	{
+		std::cout << tmp[i];
+		if (i != size - 1)
+			std::cout << ",";
+	}
+	std::cout << std::endl;
+	free(tmp);
+}
+
+template <>
+__inline__
+void print<int>(int * dev, int size)
+{
+	cudaDeviceSynchronize();
+	int * tmp = (int *)malloc(sizeof(int) * size);
+	cudaMemcpy(tmp, dev, sizeof(int) * size, cudaMemcpyDeviceToHost);
 	for (int i = 0; i < size; i++)
 	{
 		std::cout << tmp[i];
@@ -33,7 +51,7 @@ void print<float3>(float3 * dev, int size)
 	{
 		std::cout << "(" << tmp[i].x << " " << tmp[i].y << " " << tmp[i].z << ")";
 		if (i != size - 1)
-			std::cout << ",";
+			std::cout << ",\n";
 	}
 	std::cout << std::endl;
 	free(tmp);
@@ -156,6 +174,15 @@ accDevArr_float3(float3 * __restrict__ devArr,
 }
 
 __inline__ __global__ void
+initOrder_int(int * __restrict__ devArr,
+			  const int numValues)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numValues) { return; }
+	devArr[i] = i;
+}
+
+__inline__ __global__ void
 initPositionBox(float3 * __restrict__ positions,
 				int * __restrict__ phases,
 				int * phaseCounter,
@@ -171,4 +198,17 @@ initPositionBox(float3 * __restrict__ positions,
 	int z = i / (dimension.x * dimension.y);
 	positions[i] = make_float3(x, y, z) * step + startPosition;
 	phases[i] = atomicAdd(phaseCounter, 1);
+}
+
+__inline__ __global__ void
+inverseMapping(int * __restrict__ mapValuesToIndex,
+			   const int * __restrict__ mapIndexToValues,
+			   const int numValues)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numValues) { return; }
+
+	// we now have map i -> value
+	const int value = mapIndexToValues[i];
+	mapValuesToIndex[value] = i;
 }
