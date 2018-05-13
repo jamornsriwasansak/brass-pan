@@ -3,26 +3,28 @@
 // GRID //
 // from White Paper "Particles" by SIMON GREEN 
 
+__device__ __constant__ uint GridDim;
+__device__ __constant__ float3 GridCellSize;
+
 __device__
-const int3 calcGridPos(const float3 position,
-					   const  float3 origin,
-					   const  float3 cellSize)
+const int3 calcGridPos(const float3 position)
 {
-	return make_int3((position - origin) / cellSize);
+	return make_int3((position + 50000) / GridCellSize);
 }
 
 __device__
-const int positiveMod(const int dividend, const int divisor)
+const int calcGridAddress(const int x, const int y, const int z)
 {
-	return (dividend % divisor + divisor) % divisor;
+	const uint cx = x & (GridDim - 1);
+	const uint cy = y & (GridDim - 1);
+	const uint cz = z & (GridDim - 1);
+	return cx * (GridDim * GridDim) + cy * GridDim + cz;
 }
 
 __device__
-const int calcGridAddress(const int3 gridPos, const int3 gridSize)
+const int calcGridAddress(const int3 gridPos)
 {
-	return (positiveMod(gridPos.z, gridSize.z) * gridSize.y * gridSize.x)
-		+ (positiveMod(gridPos.y, gridSize.y) * gridSize.x)
-		+ (positiveMod(gridPos.x, gridSize.x));
+	return calcGridAddress(gridPos.x, gridPos.y, gridPos.z);
 }
 
 __global__ void
@@ -37,8 +39,8 @@ updateGridId(int * __restrict__ gridIds,
 	const int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
 
-	const int3 gridPos = calcGridPos(positions[i], cellOrigin, cellSize);
-	const int gridId = calcGridAddress(gridPos, gridSize);
+	const int3 gridPos = calcGridPos(positions[i]);
+	const int gridId = calcGridAddress(gridPos);
 
 	gridIds[i] = gridId;
 	particleIds[i] = i;

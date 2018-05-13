@@ -10,9 +10,6 @@ particleParticleCollisionConstraint(float3 * deltaX,
 									const int* __restrict__ phases,
 									const int* __restrict__ cellStart,
 									const int* __restrict__ cellEnd,
-									const float3 cellOrigin,
-									const float3 cellSize,
-									const int3 gridSize,
 									const int numParticles,
 									const float radius)
 {
@@ -25,7 +22,7 @@ particleParticleCollisionConstraint(float3 * deltaX,
 	float3 sumFrictionXi = make_float3(0.f);
 	const float invMass = invMasses[i];
 
-	const int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
+	const int3 centerGridPos = calcGridPos(newPositionsPrev[i]);
 	const int3 start = centerGridPos - 1;
 	const int3 end = centerGridPos + 1;
 
@@ -34,9 +31,10 @@ particleParticleCollisionConstraint(float3 * deltaX,
 		for (int y = start.y; y <= end.y; y++)
 			for (int x = start.x; x <= end.x; x++)
 			{
-				const int3 gridPos = make_int3(x, y, z);
-				const int gridAddress = calcGridAddress(gridPos, gridSize);
-				for (int j = cellStart[gridAddress];j < cellEnd[gridAddress];j++)
+				const int gridAddress = calcGridAddress(x, y, z);
+				const int neighbourStart = cellStart[gridAddress];
+				const int neighbourEnd = cellEnd[gridAddress];
+				for (int j = neighbourStart;j < neighbourEnd;j++)
 				{
 					if (i != j && phases[i] != phases[j])
 					{

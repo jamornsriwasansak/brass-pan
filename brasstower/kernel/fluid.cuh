@@ -4,7 +4,6 @@ __device__ __constant__ float KernelConst1;
 __device__ __constant__ float KernelConst2;
 __device__ __constant__ float KernelConst3;
 __device__ __constant__ float KernelConst4;
-__device__ __constant__ int3 FluidGridSearchSize;
 __device__ __constant__ float KernelRadius;
 __device__ __constant__ float KernelSquaredRadius;
 __device__ __constant__ float KernelHalfRadius;
@@ -87,10 +86,6 @@ fluidLambda(float * __restrict__ lambdas,
 			const float epsilon,
 			const int * __restrict__ cellStart,
 			const int * __restrict__ cellEnd,
-			const float3 cellOrigin,
-			const float3 cellSize,
-			const int3 gridSize,
-			const int3 gridSearchOffset,
 			const int numParticles,
 			const bool useAkinciCohesionTension)
 {
@@ -106,16 +101,15 @@ fluidLambda(float * __restrict__ lambdas,
 	float sumGradient2 = 0.f;
 #endif
 
-	const int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
-	const int3 searchStart = centerGridPos - gridSearchOffset;
-	const int3 searchEnd = centerGridPos + gridSearchOffset;
+	const int3 centerGridPos = calcGridPos(newPositionsPrev[i]);
+	const int3 searchStart = centerGridPos - 1;
+	const int3 searchEnd = centerGridPos + 1;
 
 	for (int z = searchStart.z; z <= searchEnd.z; z++)
 		for (int y = searchStart.y; y <= searchEnd.y; y++)
 			for (int x = searchStart.x; x <= searchEnd.x; x++)
 			{
-				const int3 gridPos = make_int3(x, y, z);
-				const int gridAddress = calcGridAddress(gridPos, gridSize);
+				const int gridAddress = calcGridAddress(x, y, z);
 				int neighbourStart = cellStart[gridAddress];
 				int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart; j < neighbourEnd; j++)
@@ -172,10 +166,6 @@ fluidPosition(float3 * __restrict__ deltaXs,
 			  const int N,
 			  const int* __restrict__ cellStart,
 			  const int * __restrict__ cellEnd,
-			  const float3 cellOrigin,
-			  const float3 cellSize,
-			  const int3 gridSize,
-			  const int3 gridSearchOffset,
 			  const int numParticles,
 			  const bool useAkinciCohesionTension)
 {
@@ -185,9 +175,9 @@ fluidPosition(float3 * __restrict__ deltaXs,
 	const float3 pi = newPositionsPrev[i];
 
 	float3 sum = make_float3(0.f);
-	const int3 centerGridPos = calcGridPos(newPositionsPrev[i], cellOrigin, cellSize);
-	const int3 searchStart = centerGridPos - gridSearchOffset;
-	const int3 searchEnd = centerGridPos + gridSearchOffset;
+	const int3 centerGridPos = calcGridPos(newPositionsPrev[i]);
+	const int3 searchStart = centerGridPos - 1;
+	const int3 searchEnd = centerGridPos + 1;
 
 	const float massi = masses[i];
 	const float lambdai = lambdas[i];
@@ -198,7 +188,7 @@ fluidPosition(float3 * __restrict__ deltaXs,
 			for (int x = searchStart.x; x <= searchEnd.x; x++)
 			{
 				const int3 gridPos = make_int3(x, y, z);
-				const int gridAddress = calcGridAddress(gridPos, gridSize);
+				const int gridAddress = calcGridAddress(gridPos);
 				int neighbourStart = cellStart[gridAddress];
 				int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart; j < neighbourEnd; j++)
@@ -242,10 +232,6 @@ fluidOmega(float3 * __restrict__ omegas,
 		   const int * __restrict__ phases,
 		   const int* __restrict__ cellStart,
 		   const int * __restrict__ cellEnd,
-		   const float3 cellOrigin,
-		   const float3 cellSize,
-		   const int3 gridSize,
-		   const int3 gridSearchOffset,
 		   const int numParticles)
 {
 	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
@@ -258,16 +244,16 @@ fluidOmega(float3 * __restrict__ omegas,
 	const float3 vi = velocities[i];
 
 	float3 omegai = make_float3(0.f);
-	const int3 centerGridPos = calcGridPos(positions[i], cellOrigin, cellSize);
-	const int3 searchStart = centerGridPos - gridSearchOffset;
-	const int3 searchEnd = centerGridPos + gridSearchOffset;
+	const int3 centerGridPos = calcGridPos(positions[i]);
+	const int3 searchStart = centerGridPos - 1;
+	const int3 searchEnd = centerGridPos + 1;
 
 	for (int z = searchStart.z; z <= searchEnd.z; z++)
 		for (int y = searchStart.y; y <= searchEnd.y; y++)
 			for (int x = searchStart.x; x <= searchEnd.x; x++)
 			{
 				const int3 gridPos = make_int3(x, y, z);
-				const int gridAddress = calcGridAddress(gridPos, gridSize);
+				const int gridAddress = calcGridAddress(gridPos);
 				int neighbourStart = cellStart[gridAddress];
 				int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart; j < neighbourEnd; j++)
@@ -297,10 +283,6 @@ fluidVorticity(float3 * __restrict__ velocities,
 			   const int * __restrict__ phases,
 			   const int* __restrict__ cellStart,
 			   const int * __restrict__ cellEnd,
-			   const float3 cellOrigin,
-			   const float3 cellSize,
-			   const int3 gridSize,
-			   const int3 gridSearchOffset,
 			   const int numParticles,
 			   const float deltaTime)
 {
@@ -312,9 +294,9 @@ fluidVorticity(float3 * __restrict__ velocities,
 
 	const float3 omegai = omegas[i];
 	const float3 pi = positions[i];
-	const int3 centerGridPos = calcGridPos(positions[i], cellOrigin, cellSize);
-	const int3 searchStart = centerGridPos - gridSearchOffset;
-	const int3 searchEnd = centerGridPos + gridSearchOffset;
+	const int3 centerGridPos = calcGridPos(positions[i]);
+	const int3 searchStart = centerGridPos - 1;
+	const int3 searchEnd = centerGridPos + 1;
 
 	float3 eta = make_float3(0.f);
 
@@ -323,7 +305,7 @@ fluidVorticity(float3 * __restrict__ velocities,
 			for (int x = searchStart.x; x <= searchEnd.x; x++)
 			{
 				const int3 gridPos = make_int3(x, y, z);
-				const int gridAddress = calcGridAddress(gridPos, gridSize);
+				const int gridAddress = calcGridAddress(gridPos);
 				int neighbourStart = cellStart[gridAddress];
 				int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart; j < neighbourEnd; j++)
@@ -358,10 +340,6 @@ fluidXSph(float3 * __restrict__ newVelocities,
 		  const int * __restrict__ phases,
 		  const int* __restrict__ cellStart,
 		  const int * __restrict__ cellEnd,
-		  const float3 cellOrigin,
-		  const float3 cellSize,
-		  const int3 gridSize,
-		  const int3 gridSearchOffset,
 		  const int numParticles)
 {
 	const int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
@@ -371,9 +349,9 @@ fluidXSph(float3 * __restrict__ newVelocities,
 	if (phasei >= 0) { return; }
 
 	const float3 pi = positions[i];
-	const int3 centerGridPos = calcGridPos(pi, cellOrigin, cellSize);
-	const int3 searchStart = centerGridPos - gridSearchOffset;
-	const int3 searchEnd = centerGridPos + gridSearchOffset;
+	const int3 centerGridPos = calcGridPos(pi);
+	const int3 searchStart = centerGridPos - 1;
+	const int3 searchEnd = centerGridPos + 1;
 
 	float3 vnew = make_float3(0.f);
 	const float3 vi = velocities[i];
@@ -382,7 +360,7 @@ fluidXSph(float3 * __restrict__ newVelocities,
 			for (int x = searchStart.x; x <= searchEnd.x; x++)
 			{
 				const int3 gridPos = make_int3(x, y, z);
-				const int gridAddress = calcGridAddress(gridPos, gridSize);
+				const int gridAddress = calcGridAddress(gridPos);
 				int neighbourStart = cellStart[gridAddress];
 				int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart; j < neighbourEnd; j++)
@@ -410,10 +388,6 @@ fluidNormal(float3 * __restrict__ normals,
 			const int * __restrict__ phases,
 			const int* __restrict__ cellStart,
 			const int * __restrict__ cellEnd,
-			const float3 cellOrigin,
-			const float3 cellSize,
-			const int3 gridSize,
-			const int3 gridSearchOffset,
 			const int numParticles)
 {
 	const int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
@@ -423,9 +397,9 @@ fluidNormal(float3 * __restrict__ normals,
 	if (phasei >= 0) { return; }
 
 	const float3 pi = positions[i];
-	const int3 centerGridPos = calcGridPos(pi, cellOrigin, cellSize);
-	const int3 start = centerGridPos - gridSearchOffset;
-	const int3 end = centerGridPos + gridSearchOffset;
+	const int3 centerGridPos = calcGridPos(pi);
+	const int3 start = centerGridPos - 1;
+	const int3 end = centerGridPos + 1;
 
 	float3 normal = make_float3(0.f);
 
@@ -434,7 +408,7 @@ fluidNormal(float3 * __restrict__ normals,
 			for (int x = start.x; x <= end.x; x++)
 			{
 				const int3 gridPos = make_int3(x, y, z);
-				const int gridAddress = calcGridAddress(gridPos, gridSize);
+				const int gridAddress = calcGridAddress(gridPos);
 				int neighbourStart = cellStart[gridAddress];
 				int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart; j < neighbourEnd; j++)
@@ -466,10 +440,6 @@ fluidAkinciTension(float3 * __restrict__ newVelocities,
 				   const float surfaceTension,
 				   const int* __restrict__ cellStart,
 				   const int * __restrict__ cellEnd,
-				   const float3 cellOrigin,
-				   const float3 cellSize,
-				   const int3 gridSize,
-				   const int3 gridSearchOffset,
 				   const int numParticles,
 				   const float deltaTime)
 {
@@ -480,9 +450,9 @@ fluidAkinciTension(float3 * __restrict__ newVelocities,
 	if (phasei >= 0) { return; }
 
 	const float3 pi = positions[i];
-	const int3 centerGridPos = calcGridPos(pi, cellOrigin, cellSize);
-	const int3 start = centerGridPos - gridSearchOffset;
-	const int3 end = centerGridPos + gridSearchOffset;
+	const int3 centerGridPos = calcGridPos(pi);
+	const int3 start = centerGridPos - 1;
+	const int3 end = centerGridPos + 1;
 
 	float3 fTension = make_float3(0.f);
 
@@ -491,7 +461,7 @@ fluidAkinciTension(float3 * __restrict__ newVelocities,
 			for (int x = start.x; x <= end.x; x++)
 			{
 				const int3 gridPos = make_int3(x, y, z);
-				const int gridAddress = calcGridAddress(gridPos, gridSize);
+				const int gridAddress = calcGridAddress(gridPos);
 				for (int j = cellStart[gridAddress]; j < cellEnd[gridAddress]; j++)
 				{
 					if (i != j && phasei == phases[j])

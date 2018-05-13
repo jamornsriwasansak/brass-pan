@@ -138,6 +138,8 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devSortedParticleId, scene->numMaxParticles * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devCellStart, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
 		checkCudaErrors(cudaMalloc(&devCellEnd, gridSize.x * gridSize.y * gridSize.z * sizeof(int)));
+		checkCudaErrors(cudaMemcpyToSymbol(GridDim, &gridSize.x, sizeof(uint)));
+		checkCudaErrors(cudaMemcpyToSymbol(GridCellSize, &cellSize, sizeof(float3)));
 		int numCellBlocks, numCellThreads;
 		int numCells = gridSize.x * gridSize.y * gridSize.z;
 		GetNumBlocksNumThreads(&numCellBlocks, &numCellThreads, numCells);
@@ -446,9 +448,6 @@ struct ParticleSolver
 																			   devPhases,
 																			   devCellStart,
 																			   devCellEnd,
-																			   cellOrigin,
-																			   cellSize,
-																			   gridSize,
 																			   scene->numParticles,
 																			   scene->radius);
 				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
@@ -464,10 +463,6 @@ struct ParticleSolver
 													   300.0f, // relaxation parameter
 													   devCellStart,
 													   devCellEnd,
-													   cellOrigin,
-													   cellSize,
-													   gridSize,
-													   fluidGridSearchOffset,
 													   scene->numParticles,
 													   useAkinciCohesionTension);
 
@@ -482,10 +477,6 @@ struct ParticleSolver
 														 4, // N for sCorr
 														 devCellStart,
 														 devCellEnd,
-														 cellOrigin,
-														 cellSize,
-														 gridSize,
-														 fluidGridSearchOffset,
 														 scene->numParticles,
 														 useAkinciCohesionTension);
 				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
@@ -516,10 +507,6 @@ struct ParticleSolver
 												  devPhases,
 												  devCellStart,
 												  devCellEnd,
-												  cellOrigin,
-												  cellSize,
-												  gridSize,
-												  fluidGridSearchOffset,
 												  scene->numParticles);
 
 			// vorticity confinement part 2.
@@ -530,10 +517,6 @@ struct ParticleSolver
 													  devPhases,
 													  devCellStart,
 													  devCellEnd,
-													  cellOrigin,
-													  cellSize,
-													  gridSize,
-													  fluidGridSearchOffset,
 													  scene->numParticles,
 													  subDeltaTime);
 
@@ -546,10 +529,6 @@ struct ParticleSolver
 													   devPhases,
 													   devCellStart,
 													   devCellEnd,
-													   cellOrigin,
-													   cellSize,
-													   gridSize,
-													   fluidGridSearchOffset,
 													   scene->numParticles);
 
 				fluidAkinciTension<<<numBlocks, numThreads>>>(devTempFloat3,
@@ -562,10 +541,6 @@ struct ParticleSolver
 															  0.1, // tension strength
 															  devCellStart,
 															  devCellEnd,
-															  cellOrigin,
-															  cellSize,
-															  gridSize,
-															  fluidGridSearchOffset,
 															  scene->numParticles,
 															  deltaTime);
 				std::swap(devVelocities, devTempFloat3);
@@ -579,10 +554,6 @@ struct ParticleSolver
 												 devPhases,
 												 devCellStart,
 												 devCellEnd,
-												 cellOrigin,
-												 cellSize,
-												 gridSize,
-												 fluidGridSearchOffset,
 												 scene->numParticles);
 			std::swap(devVelocities, devTempFloat3);
 
