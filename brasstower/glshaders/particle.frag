@@ -4,6 +4,7 @@ layout(location = 0) out vec4 fPosition;
 
 in vec3 vPosition;
 in vec3 vNormal;
+in vec3 vColor;
 in vec3 vParticleCentroid;
 
 uniform vec3 uCameraPosition;
@@ -25,6 +26,6 @@ void main()
 	float cosTheta2 = dotResult * dotResult / h2 / d2;
 	if (h2 * (1.0 - cosTheta2) >= uRadius * uRadius) discard;
 
-	vec3 shadingNormal = normalize(vNormal);
+	vec3 shadingNormal = normalize(vNormal) * vColor;
 	fPosition = vec4(shadingNormal, 1.0f);
 }

@@ -213,18 +213,23 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight),
 
 	// mass per particle unimplemented
-	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 1.0f));
+	//scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height / 2, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 0.75f));
+	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height / 2, depth), glm::vec3(startX, startY + 5, startZ), glm::vec3(diam), 1.0f));
 	scene->fluidRestDensity = 1200.0f;
 
 	//scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 + 2, scene->radius + 2, 0), glm::vec3(scene->radius * 2.0f), 2.0f));
 	return scene;
 }
 
-__global__ void mapPositions(float4 * ssboDptr, float3 * position, const int numParticles)
+__global__ void mapParticleInfos(void * ssboDptr, float3 * position, int * phases, const int numParticles)
 {
 	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
-	ssboDptr[i] = make_float4(position[i].x, position[i].y, position[i].z, 0.0f);
+	//ssboDptr[i] = make_float4(position[i].x, position[i].y, position[i].z, 0.0f);
+	((float*)ssboDptr)[i * 4 + 0] = position[i].x;
+	((float*)ssboDptr)[i * 4 + 1] = position[i].y;
+	((float*)ssboDptr)[i * 4 + 2] = position[i].z;
+	((int*)ssboDptr)[i * 4 + 3] = phases[i];
 }
 
 __global__ void mapMatrices(matrix4 * matrices, quaternion * quaternions, float3 * CMs, const int numRigidBodies)
@@ -288,9 +293,10 @@ int main()
 			float4 *dptr = renderer->mapParticlePositionsSsbo();
 			int numBlocks, numThreads;
 			GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
-			mapPositions<<<numBlocks, numThreads>>>(dptr,
-													solver->devPositions,
-													scene->numParticles);
+			mapParticleInfos<<<numBlocks, numThreads>>>(dptr,
+														solver->devPositions,
+														solver->devPhases,
+														scene->numParticles);
 			renderer->unmapParticlePositionsSsbo();
 		}
 		{

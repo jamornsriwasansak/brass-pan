@@ -340,6 +340,7 @@ struct ParticleRenderer
 			glDisableVertexAttribArray(0);
 		}
 
+		/*
 		// render rigidbody meshes
 		{
 			glUseProgram(meshDrawingProgram->mHandle);
@@ -369,6 +370,7 @@ struct ParticleRenderer
 			}
 			glDisableVertexAttribArray(0);
 		}
+		*/
 
 		// render plane
 		{
