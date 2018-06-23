@@ -127,10 +127,13 @@ fluidLambda(float * __restrict__ lambdas,
 							density += (phases[j] < 0) ? liquidDensity : solidDensity * liquidDensity;
 
 						#ifndef USE_PRECOMPUTED_FLUID
-							// gradient for lambda
-							const float3 gradient = -massj * gradientSpikyKernel(diff, dist2) / restDensity;
-							sumGradient2 += dot(gradient, gradient);
-							gradientI -= gradient;
+							if (dist2 > 0)
+							{
+								// gradient for lambda
+								const float3 gradient = -massj * gradientSpikyKernel(diff, dist2) / restDensity;
+								sumGradient2 += dot(gradient, gradient);
+								gradientI -= gradient;
+							}
 						#endif
 						}
 					}
