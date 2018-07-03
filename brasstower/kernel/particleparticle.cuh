@@ -26,6 +26,8 @@ particleParticleCollisionConstraint(float3 * deltaX,
 	const int3 start = centerGridPos - 1;
 	const int3 end = centerGridPos + 1;
 
+	const int phasei = phases[i];
+
 	int constraintCount = 0;
 	for (int z = start.z; z <= end.z; z++)
 		for (int y = start.y; y <= end.y; y++)
@@ -36,7 +38,8 @@ particleParticleCollisionConstraint(float3 * deltaX,
 				const int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart;j < neighbourEnd;j++)
 				{
-					if (i != j && phases[i] != phases[j])
+					const int phasej = phases[j];
+					if (i != j && phasei != phasej && (phasei > 0 || phasej > 0))
 					{
 						const float3 xjPrev = newPositionsPrev[j];
 						const float3 diff = xiPrev - xjPrev;
