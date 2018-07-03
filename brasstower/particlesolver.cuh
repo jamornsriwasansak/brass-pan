@@ -87,7 +87,6 @@ __global__ void
 queryId(int id, int * mapToIds)
 {
     queriedId = mapToIds[id];
-    printf("queriedId : %d\n", queriedId);
 }
 
 struct ParticleSolver
@@ -183,11 +182,9 @@ struct ParticleSolver
 
     int queryOriginalParticleId(int newParticleId)
     {
-        printf("%d\n", newParticleId);
         queryId<<<1, 1>>>(newParticleId, devMapToOriginalIds);
         int originalParticleId;
-        cudaMemcpyFromSymbol(&originalParticleId, "queriedId", sizeof(originalParticleId), 0, cudaMemcpyDeviceToHost);
-        printf("%d\n", originalParticleId);
+        checkCudaErrors(cudaMemcpyFromSymbol(&originalParticleId, queriedId, sizeof(originalParticleId), 0, cudaMemcpyDeviceToHost));
         return originalParticleId;
     }
 
@@ -195,7 +192,7 @@ struct ParticleSolver
     {
         queryId<<<1, 1>>>(oldParticleId, devMapToNewIds);
         int newParticleId;
-        cudaMemcpyFromSymbol(&newParticleId, "queriedId", sizeof(newParticleId), 0, cudaMemcpyDeviceToHost);
+        checkCudaErrors(cudaMemcpyFromSymbol(&newParticleId, queriedId, sizeof(newParticleId), 0, cudaMemcpyDeviceToHost));
         return newParticleId;
     }
 
