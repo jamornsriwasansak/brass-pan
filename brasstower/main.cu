@@ -152,7 +152,7 @@ std::shared_ptr<Scene> initRigidBodiesScene()
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
-	scene->camera = Camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight),
+	scene->camera = Camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight);
 
 	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 3, 3), glm::vec3(0 - scene->radius, scene->radius + 2, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 2.0f));
 	scene->rigidBodies.push_back(RigidBody::CreateRigidBox(BlackBoardColor, glm::ivec3(3, 4, 2), glm::vec3(0 - scene->radius, scene->radius + 1, 0 - scene->radius), glm::vec3(scene->radius * 2.0f), 1.5f));
@@ -175,7 +175,7 @@ std::shared_ptr<Scene> initSimpleScene()
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
-	scene->camera = Camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight),
+	scene->camera = Camera(glm::vec3(0, 5, 7), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight);
 
 	scene->granulars.push_back(Granulars::CreateGranularsBlock(glm::ivec3(30, 50, 30), glm::vec3(0, scene->radius, 0), glm::vec3(scene->radius * 2.0f), 1.0f));
 
@@ -212,7 +212,7 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
-	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight),
+	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight);
 
 	// mass per particle unimplemented
 	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height / 2, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 0.75f));
@@ -220,6 +220,34 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->fluidRestDensity = 1200.0f;
 
 	//scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 + 2, scene->radius + 2, 0), glm::vec3(scene->radius * 2.0f), 2.0f));
+	return scene;
+}
+
+std::shared_ptr<Scene> initRopesScene()
+{
+	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
+	scene->planes.push_back(Plane(glm::vec3(-2.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->numParticles = 0;
+	scene->numMaxParticles = 50000;
+	scene->numRigidBodies = 0;
+	scene->numMaxRigidBodies = 128;
+	scene->numDistancePairs = 0;
+	scene->numMaxDistancePairs = 256;
+	scene->radius = 0.05f;
+
+	scene->pointLight.intensity = glm::vec3(5.0f);
+	scene->pointLight.position = glm::vec3(1, 5, 1);
+	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
+
+	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight);
+
+	scene->ropes.push_back(Rope::CreateRope(glm::vec3(0.f, 1.0f, 0.f), glm::vec3(0.f, 2.0f, 0.f), 10, 1.0f));
+	scene->ropes.push_back(Rope::CreateRope(glm::vec3(1.f, 1.0f, 0.f), glm::vec3(1.f, 2.0f, 0.f), 10, 1.0f));
+
 	return scene;
 }
 
@@ -248,7 +276,7 @@ int main()
 	cudaGLSetGLDevice(0);
 	window = InitGL(windowWidth, windowHeight);
 
-	scene = initFluidScene();
+	scene = initRopesScene();
 	renderer = new ParticleRenderer(glm::uvec2(windowWidth, windowHeight), scene);
 	solver = new ParticleSolver(scene);
 

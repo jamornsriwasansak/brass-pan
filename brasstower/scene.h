@@ -140,6 +140,39 @@ struct Fluid
 	}
 };
 
+struct Rope
+{
+	std::vector<glm::vec3> positions;
+	std::vector<glm::int2> links;
+	std::vector<float> distances;
+	float massPerParticle;
+
+	static std::shared_ptr<Rope> CreateRope(const glm::vec3 & startPosition,
+											const glm::vec3 & endPosition,
+											const int numBeads,
+											const float massPerParticle)
+	{
+		std::shared_ptr<Rope> result = std::make_shared<Rope>();
+		result->massPerParticle = massPerParticle;
+
+		std::vector<glm::vec3> & positions = result->positions;
+		std::vector<glm::int2> & links = result->links;
+		std::vector<float> & distances = result->distances;
+		glm::vec3 diff = endPosition - startPosition;
+		float distance = glm::length(diff) / float(numBeads - 1);
+		for (int i = 0; i < numBeads; i++)
+		{
+			positions.push_back(startPosition + float(i) / float(numBeads - 1) * diff);
+		}
+		for (int i = 0; i < numBeads - 1; i++)
+		{
+			links.push_back(glm::int2(i, i + 1));
+			distances.push_back(distance);
+		}
+		return result;
+	}
+};
+
 struct Camera
 {
 	Camera() {}
@@ -225,6 +258,7 @@ struct Scene
 	std::vector<std::shared_ptr<RigidBody>> rigidBodies;
 	std::vector<std::shared_ptr<Granulars>> granulars; // position of solid particles (without any constraints)
 	std::vector<std::shared_ptr<Fluid>> fluids;
+	std::vector<std::shared_ptr<Rope>> ropes;
 
 	PointLight pointLight;
 
@@ -236,5 +270,7 @@ struct Scene
 	size_t numMaxParticles = 0;
 	size_t numRigidBodies = 0;
 	size_t numMaxRigidBodies = 0;
+	size_t numDistancePairs = 0;
+	size_t numMaxDistancePairs = 0;
 	float radius;
 };

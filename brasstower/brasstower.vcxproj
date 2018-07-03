@@ -105,6 +105,7 @@ copy /y /d $(SolutionDir)dependencies\bin\*.dll $(SolutionDir)sandbox</Command>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="kernel\cubrasstower.cuh" />
+    <ClInclude Include="kernel\distance.cuh" />
     <ClInclude Include="kernel\fluid.cuh" />
     <ClInclude Include="cuda\cudaglm.cuh" />
     <ClInclude Include="cuda\cudamatrix.cuh" />

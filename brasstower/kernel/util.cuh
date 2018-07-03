@@ -87,9 +87,9 @@ atomicAdd(float3 * arr, int index, const float3 val)
 }
 
 __inline__ __global__ void
-increment(int * __restrict__ x)
+increment(int * __restrict__ x, int value = 1)
 {
-	atomicAdd(x, 1);
+	atomicAdd(x, value);
 }
 
 __inline__ __global__ void
@@ -171,6 +171,16 @@ accDevArr_float3(float3 * __restrict__ devArr,
 	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] += delta[i];
+}
+
+__inline__ __global__ void
+accDevArr_int2(int2 * __restrict__ devArr,
+			   const int2 delta,
+			   const int numValues)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numValues) { return; }
+	devArr[i] += delta;
 }
 
 __inline__ __global__ void
