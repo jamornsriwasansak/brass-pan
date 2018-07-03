@@ -262,7 +262,7 @@ struct ParticleRenderer
 		glShaderStorageBlockBinding(particlesDrawingProgram->mHandle, index, particlesDrawingProgram_ssboBinding);
 	}
 
-	int queryParticleColorCode(const glm::uvec2 & pos)
+	int queryParticleId(const glm::uvec2 & pos)
 	{
 		glm::mat4 cameraVpMatrix = scene->camera.vpMatrix();
 		glBindFramebuffer(GL_FRAMEBUFFER, particlesColorCodeFramebufferHandle);

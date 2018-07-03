@@ -82,6 +82,14 @@ updatePositions(float3 * __restrict__ positions,
 	positions[i] = (dist2 >= threshold * threshold || phases[i] < 0) ? newX : x;
 }
 
+__device__ int queriedId;
+__global__ void
+queryId(int id, int * mapToIds)
+{
+    queriedId = mapToIds[id];
+    printf("queriedId : %d\n", queriedId);
+}
+
 struct ParticleSolver
 {
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
@@ -93,8 +101,6 @@ struct ParticleSolver
 		fluidKernelRadius = 2.3f * scene->radius;
 		SetKernelRadius(fluidKernelRadius);
 		fluidPhaseCounter = -1;
-
-		///TODO:: implement memory manager for efficient memory reusing.
 
 		// alloc particle vars
 		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
@@ -174,6 +180,24 @@ struct ParticleSolver
 
 		fluidRestDensity = scene->fluidRestDensity;
 	}
+
+    int queryOriginalParticleId(int newParticleId)
+    {
+        printf("%d\n", newParticleId);
+        queryId<<<1, 1>>>(newParticleId, devMapToOriginalIds);
+        int originalParticleId;
+        cudaMemcpyFromSymbol(&originalParticleId, "queriedId", sizeof(originalParticleId), 0, cudaMemcpyDeviceToHost);
+        printf("%d\n", originalParticleId);
+        return originalParticleId;
+    }
+
+    int queryNewParticleId(int oldParticleId)
+    {
+        queryId<<<1, 1>>>(oldParticleId, devMapToNewIds);
+        int newParticleId;
+        cudaMemcpyFromSymbol(&newParticleId, "queriedId", sizeof(newParticleId), 0, cudaMemcpyDeviceToHost);
+        return newParticleId;
+    }
 
 	void updateTempStorageSize(const size_t size)
 	{
@@ -375,7 +399,7 @@ struct ParticleSolver
 
 	void update(const int numSubTimeStep,
 				const float deltaTime,
-				const int pickedParticleId = -1,
+				const int pickedOriginalParticleId = -1,
 				const glm::vec3 & pickedParticlePosition = glm::vec3(0.0f),
 				const glm::vec3 & pickedParticleVelocity = glm::vec3(0.0f))
 	{
@@ -393,9 +417,10 @@ struct ParticleSolver
 												   subDeltaTime);
 
 			// we need to make picked particle immovable
-			if (pickedParticleId >= 0 && pickedParticleId < scene->numParticles)
+			if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
 			{
-				setParticle(pickedParticleId, pickedParticlePosition, glm::vec3(0.0f));
+                int pickedNewParticleId = queryNewParticleId(pickedOriginalParticleId);
+				setParticle(pickedNewParticleId, pickedParticlePosition, glm::vec3(0.0f));
 			}
 
 			predictPositions<<<numBlocks, numThreads>>>(devNewPositions,
@@ -568,10 +593,11 @@ struct ParticleSolver
 		}
 
 		// we need to make picked particle immovable
-		if (pickedParticleId >= 0 && pickedParticleId < scene->numParticles)
+		if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
 		{
-			glm::vec3 solvedPickedParticlePosition = getParticlePosition(pickedParticleId);
-			setParticle(pickedParticleId, solvedPickedParticlePosition, pickedParticleVelocity);
+            int pickedNewParticleId = queryNewParticleId(pickedOriginalParticleId);
+			glm::vec3 solvedPickedParticlePosition = getParticlePosition(pickedNewParticleId);
+			setParticle(pickedNewParticleId, solvedPickedParticlePosition, pickedParticleVelocity);
 		}
 	}
 
