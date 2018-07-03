@@ -26,6 +26,8 @@ void main()
 	float cosTheta2 = dotResult * dotResult / h2 / d2;
 	if (h2 * (1.0 - cosTheta2) >= uRadius * uRadius) discard;
 
-	vec3 shadingNormal = normalize(vNormal) * vColor;
-	fPosition = vec4(shadingNormal, 1.0f);
+	vec3 ambient = vColor * 0.4f;
+	vec3 diffuse = max(-dot(normalize(vNormal), normalize(diff)), 0.f) * vColor / dist2;
+	vec3 color = ambient + diffuse;
+	fPosition = vec4(color, 1.0f);
 }
