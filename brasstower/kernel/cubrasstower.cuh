@@ -18,3 +18,5 @@
 #define MASS_SCALING_CONSTANT 2 // refers to k in equation (21)
 #define PARTICLE_SLEEPING_EPSILON 0.00
 #define NUM_MAX_PARTICLE_PER_RIGID_BODY 64
+
+#define MATH_PI 3.141592

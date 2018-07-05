@@ -237,6 +237,7 @@ std::shared_ptr<Scene> initRopesScene()
 	scene->numMaxRigidBodies = 128;
 	scene->numDistancePairs = 0;
 	scene->numMaxDistancePairs = 256;
+	scene->numMaxBendingTriplets = 128;
 	scene->radius = 0.05f;
 
 	scene->pointLight.intensity = glm::vec3(5.0f);

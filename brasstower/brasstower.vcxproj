@@ -104,6 +104,7 @@ copy /y /d $(SolutionDir)dependencies\bin\*.dll $(SolutionDir)sandbox</Command>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="kernel\bending.cuh" />
     <ClInclude Include="kernel\cubrasstower.cuh" />
     <ClInclude Include="kernel\distance.cuh" />
     <ClInclude Include="kernel\fluid.cuh" />

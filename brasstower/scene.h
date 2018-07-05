@@ -145,6 +145,7 @@ struct Rope
 	std::vector<glm::vec3> positions;
 	std::vector<glm::int2> links;
 	std::vector<float> distances;
+	std::vector<glm::int3> bendings;
 	float massPerParticle;
 
 	static std::shared_ptr<Rope> CreateRope(const glm::vec3 & startPosition,
@@ -158,6 +159,7 @@ struct Rope
 		std::vector<glm::vec3> & positions = result->positions;
 		std::vector<glm::int2> & links = result->links;
 		std::vector<float> & distances = result->distances;
+		std::vector<glm::int3> & bendings = result->bendings;
 		glm::vec3 diff = endPosition - startPosition;
 		float distance = glm::length(diff) / float(numBeads - 1);
 		for (int i = 0; i < numBeads; i++)
@@ -168,6 +170,10 @@ struct Rope
 		{
 			links.push_back(glm::int2(i, i + 1));
 			distances.push_back(distance);
+		}
+		for (int i = 1; i < numBeads - 1; i++)
+		{
+			bendings.push_back(glm::int3(i - 1, i, i + 1));
 		}
 		return result;
 	}
@@ -272,5 +278,7 @@ struct Scene
 	size_t numMaxRigidBodies = 0;
 	size_t numDistancePairs = 0;
 	size_t numMaxDistancePairs = 0;
+	size_t numBendingTriplets = 0;
+	size_t numMaxBendingTriplets = 0;
 	float radius;
 };
