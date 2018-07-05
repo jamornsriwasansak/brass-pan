@@ -140,10 +140,7 @@ struct ParticleSolver
 
 		// alloc distance constraints
 		checkCudaErrors(cudaMalloc(&devDistancePairs, scene->numMaxDistancePairs * sizeof(int2)));
-		checkCudaErrors(cudaMalloc(&devDistances, scene->numMaxDistancePairs * sizeof(float)));
-
-		// alloc bending triplets
-		checkCudaErrors(cudaMalloc(&devBendingTriplets, scene->numMaxBendingTriplets * sizeof(int3)));
+		checkCudaErrors(cudaMalloc(&devDistanceParams, scene->numMaxDistancePairs * sizeof(float2)));
 
 		// alloc and set phase counter
 		checkCudaErrors(cudaMalloc(&devSolidPhaseCounter, sizeof(int)));
@@ -352,7 +349,7 @@ struct ParticleSolver
 	}
 
 	// cloth and spaghetti
-	void addNoodles(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<float> & distance, const std::vector<glm::int3> & bendingTriplets, const float massPerParticle, const bool doSelfCollide = true)
+	void addNoodles(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<glm::vec2> & distanceParams, const std::vector<glm::int3> & bendingTriplets, const float massPerParticle, const bool doSelfCollide = true)
 	{
 		int numParticles = positions.size();
 		if (scene->numParticles + numParticles >= scene->numMaxParticles)
@@ -415,21 +412,10 @@ struct ParticleSolver
 		accDevArr_int2<<<numDistancePairsBlock, numDistancePairsThreads>>>(devDistancePairs + scene->numDistancePairs,
 																		   make_int2(scene->numParticles),
 																		   numDistanceConstraints);
-		checkCudaErrors(cudaMemcpy(devDistances + scene->numDistancePairs,
-								   &(distance[0]),
-								   numDistanceConstraints * sizeof(float),
+		checkCudaErrors(cudaMemcpy(devDistanceParams + scene->numDistancePairs,
+								   &(distanceParams[0]),
+								   numDistanceConstraints * sizeof(float) * 2,
 								   cudaMemcpyHostToDevice));
-
-		// set bending triplets
-		checkCudaErrors(cudaMemcpy(devBendingTriplets + scene->numBendingTriplets,
-								   &(bendingTriplets[0].x),
-								   numBendingTriplets * sizeof(int) * 3,
-								   cudaMemcpyHostToDevice));
-		int numBendingBlocks, numBendingThreads;
-		GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, numBendingTriplets);
-		accDevArr_int3<<<numDistancePairsBlock, numDistancePairsThreads>>>(devBendingTriplets + scene->numBendingTriplets,
-																		   make_int3(scene->numBendingTriplets),
-																		   numBendingTriplets);
 
 		scene->numParticles += numParticles;
 		scene->numDistancePairs += numDistanceConstraints;
@@ -620,24 +606,9 @@ struct ParticleSolver
 																				   devNewPositions,
 																				   devInvScaledMasses,
 																				   devDistancePairs,
-																				   devDistances,
+																				   devDistanceParams,
 																				   devMapToNewIds,
 																				   scene->numDistancePairs);
-					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-				}
-
-				// solve all single bending constraints
-				if (scene->numBendingTriplets > 0)
-				{
-					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
-					int numBendingBlocks, int numBendingThreads;
-					GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, scene->numBendingTriplets);
-					bendingTripletsConstraints<<<numBendingBlocks, numBendingThreads>>>(devDeltaX,
-																						devNewPositions,
-																						devInvScaledMasses,
-																						devBendingTriplets,
-																						devMapToNewIds,
-																						scene->numBendingTriplets);
 					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
 				}
 
@@ -771,9 +742,7 @@ struct ParticleSolver
 	float3 *	devRigidBodyCMs;// center of mass
 
 	int2 *		devDistancePairs;
-	float *		devDistances;
-
-	int3 *		devBendingTriplets;
+	float2 *	devDistanceParams;
 
 	void *		devTempStorage = nullptr;
 	size_t		devTempStorageSize = 0;

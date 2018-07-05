@@ -5,7 +5,7 @@ distanceConstraints(float3 * deltaX,
 					const float3 * __restrict__ positions,
 					const float * __restrict__ invMasses,
 					const int2 * __restrict__ distancePairs,
-					const float * __restrict__ distances,
+					const float2 * __restrict__ distanceParams,
 				    const int * __restrict__ newIds,
 					const int numPairs)
 {
@@ -13,7 +13,9 @@ distanceConstraints(float3 * deltaX,
 	if (launchIndex >= numPairs) { return; }
 
 	int2 originalPair = distancePairs[launchIndex];
-	float distance = distances[launchIndex];
+	float2 distanceParam = distanceParams[launchIndex];
+	float distance = distanceParam.x;
+	float stiffness = distanceParam.y;
 
 	int id1 = newIds[originalPair.x];
 	int id2 = newIds[originalPair.y];
@@ -28,7 +30,7 @@ distanceConstraints(float3 * deltaX,
 	float w2 = invMasses[id2];
 	float sumW12 = w1 + w2;
 
-	float3 k = n * ((dist12 - distance) / sumW12);
+	float3 k = n * ((dist12 - distance) / sumW12) * stiffness;
 	float3 deltaX1 = -w1 * k;
 	float3 deltaX2 = w2 * k;
 

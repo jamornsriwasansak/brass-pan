@@ -144,7 +144,7 @@ struct Rope
 {
 	std::vector<glm::vec3> positions;
 	std::vector<glm::int2> links;
-	std::vector<float> distances;
+	std::vector<glm::vec2> distances;
 	std::vector<glm::int3> bendings;
 	float massPerParticle;
 
@@ -158,7 +158,7 @@ struct Rope
 
 		std::vector<glm::vec3> & positions = result->positions;
 		std::vector<glm::int2> & links = result->links;
-		std::vector<float> & distances = result->distances;
+		std::vector<glm::vec2> & distanceParams = result->distances;
 		std::vector<glm::int3> & bendings = result->bendings;
 		glm::vec3 diff = endPosition - startPosition;
 		float distance = glm::length(diff) / float(numBeads - 1);
@@ -169,11 +169,12 @@ struct Rope
 		for (int i = 0; i < numBeads - 1; i++)
 		{
 			links.push_back(glm::int2(i, i + 1));
-			distances.push_back(distance);
+			distanceParams.push_back(glm::vec2(distance, 1.0f));
 		}
 		for (int i = 1; i < numBeads - 1; i++)
 		{
-			bendings.push_back(glm::int3(i - 1, i, i + 1));
+			links.push_back(glm::int2(i - 1, i + 1));
+			distanceParams.push_back(glm::vec2(distance * 2.0f, 0.1f));
 		}
 		return result;
 	}
