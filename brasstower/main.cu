@@ -237,7 +237,6 @@ std::shared_ptr<Scene> initRopesScene()
 	scene->numMaxRigidBodies = 128;
 	scene->numDistancePairs = 0;
 	scene->numMaxDistancePairs = 256;
-	scene->numMaxBendingTriplets = 128;
 	scene->radius = 0.05f;
 
 	scene->pointLight.intensity = glm::vec3(5.0f);
@@ -248,6 +247,8 @@ std::shared_ptr<Scene> initRopesScene()
 
 	scene->ropes.push_back(Rope::CreateRope(glm::vec3(0.f, 1.0f, 0.f), glm::vec3(0.f, 2.0f, 0.f), 10, 1.0f));
 	scene->ropes.push_back(Rope::CreateRope(glm::vec3(1.f, 1.0f, 0.f), glm::vec3(1.f, 2.0f, 0.f), 10, 1.0f));
+
+    scene->clothes.push_back(Cloth::CreateCloth(glm::vec3(2.f, 2.f, 2.f), glm::vec3(-0.12f, 0.f, 0.f), glm::vec3(0.f, -0.12f, 0.f), 10, 10, 1.0f));
 
 	return scene;
 }

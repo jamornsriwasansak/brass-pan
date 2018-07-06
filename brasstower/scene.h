@@ -143,41 +143,93 @@ struct Fluid
 struct Rope
 {
 	std::vector<glm::vec3> positions;
-	std::vector<glm::int2> links;
-	std::vector<glm::vec2> distances;
-	std::vector<glm::int3> bendings;
+	std::vector<glm::int2> distancePairs;
+	std::vector<glm::vec2> distanceParams; // (distance, stiffness)
 	float massPerParticle;
 
 	static std::shared_ptr<Rope> CreateRope(const glm::vec3 & startPosition,
 											const glm::vec3 & endPosition,
-											const int numBeads,
+											const int numJoint,
 											const float massPerParticle)
 	{
 		std::shared_ptr<Rope> result = std::make_shared<Rope>();
 		result->massPerParticle = massPerParticle;
 
 		std::vector<glm::vec3> & positions = result->positions;
-		std::vector<glm::int2> & links = result->links;
-		std::vector<glm::vec2> & distanceParams = result->distances;
-		std::vector<glm::int3> & bendings = result->bendings;
+		std::vector<glm::int2> & distancePairs = result->distancePairs;
+		std::vector<glm::vec2> & distanceParams = result->distanceParams;
 		glm::vec3 diff = endPosition - startPosition;
-		float distance = glm::length(diff) / float(numBeads - 1);
-		for (int i = 0; i < numBeads; i++)
+		float distance = glm::length(diff) / float(numJoint - 1);
+		for (int i = 0; i < numJoint; i++)
 		{
-			positions.push_back(startPosition + float(i) / float(numBeads - 1) * diff);
+			positions.push_back(startPosition + float(i) / float(numJoint - 1) * diff);
 		}
-		for (int i = 0; i < numBeads - 1; i++)
+		for (int i = 0; i < numJoint - 1; i++)
 		{
-			links.push_back(glm::int2(i, i + 1));
+			distancePairs.push_back(glm::int2(i, i + 1));
 			distanceParams.push_back(glm::vec2(distance, 1.0f));
 		}
-		for (int i = 1; i < numBeads - 1; i++)
+		for (int i = 1; i < numJoint - 1; i++)
 		{
-			links.push_back(glm::int2(i - 1, i + 1));
+			distancePairs.push_back(glm::int2(i - 1, i + 1));
 			distanceParams.push_back(glm::vec2(distance * 2.0f, 0.1f));
 		}
 		return result;
 	}
+};
+
+struct Cloth
+{
+    std::vector<glm::vec3> positions;
+    std::vector<glm::int2> distancePairs;
+    std::vector<glm::vec2> distanceParams;
+    std::vector<glm::int4> bendings;
+    float massPerParticle;
+
+    static std::shared_ptr<Cloth> CreateCloth(const glm::vec3 & startPosition,
+                                              const glm::vec3 & offsetX,
+                                              const glm::vec3 & offsetY,
+                                              const int numJointX,
+                                              const int numJointY,
+                                              const float massPerParticle)
+    {
+        std::shared_ptr<Cloth> result = std::make_shared<Cloth>();
+        result->massPerParticle = massPerParticle;
+
+        std::vector<glm::vec3> & positions = result->positions;
+        std::vector<glm::int2> & distancePairs = result->distancePairs;
+        std::vector<glm::vec2> & distanceParams = result->distanceParams;
+        std::vector<glm::int4> & bendings = result->bendings;
+
+        float lengthX = length(offsetX);
+        float lengthY = length(offsetY);
+        float lengthDiag = length(offsetX + offsetY);
+
+        // init positions
+        for (int x = 0; x < numJointX; x++)
+        {
+            for (int y = 0; y < numJointY; y++)
+            {
+                positions.push_back(startPosition + x * offsetX + y * offsetY);
+
+                // distance pairs
+                if (x < numJointX - 1)
+                {
+                    // horizontal
+                    distancePairs.push_back(glm::int2(y * numJointX + x, y * numJointX + x + 1));
+                    distanceParams.push_back(glm::vec2(lengthX, 0.3f));
+
+                }
+                if (y < numJointY - 1)
+                {
+                    // vertical
+                    distancePairs.push_back(glm::int2(y * numJointX + x, (y + 1) * numJointX + x));
+                    distanceParams.push_back(glm::vec2(lengthX, 0.3f));
+                }
+            }
+        }
+        return result;
+    }
 };
 
 struct Camera
@@ -266,6 +318,7 @@ struct Scene
 	std::vector<std::shared_ptr<Granulars>> granulars; // position of solid particles (without any constraints)
 	std::vector<std::shared_ptr<Fluid>> fluids;
 	std::vector<std::shared_ptr<Rope>> ropes;
+    std::vector<std::shared_ptr<Cloth>> clothes;
 
 	PointLight pointLight;
 
@@ -279,7 +332,5 @@ struct Scene
 	size_t numMaxRigidBodies = 0;
 	size_t numDistancePairs = 0;
 	size_t numMaxDistancePairs = 0;
-	size_t numBendingTriplets = 0;
-	size_t numMaxBendingTriplets = 0;
 	float radius;
 };

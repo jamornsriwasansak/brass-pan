@@ -169,24 +169,19 @@ struct ParticleSolver
 
 		// start initing the scene
 		for (std::shared_ptr<RigidBody> rigidBody : scene->rigidBodies)
-		{
 			addRigidBody(rigidBody->positions, rigidBody->positions_CM_Origin, rigidBody->massPerParticle);
-		}
 
 		for (std::shared_ptr<Granulars> granulars : scene->granulars)
-		{
 			addGranulars(granulars->positions, granulars->massPerParticle);
-		}
 
 		for (std::shared_ptr<Fluid> fluids : scene->fluids)
-		{
 			addFluids(fluids->positions, fluids->massPerParticle);
-		}
 
 		for (std::shared_ptr<Rope> ropes : scene->ropes)
-		{
-			addNoodles(ropes->positions, ropes->links, ropes->distances, ropes->bendings, ropes->massPerParticle);
-		}
+			addNoodles(ropes->positions, ropes->distancePairs, ropes->distanceParams, ropes->massPerParticle);
+
+        for (std::shared_ptr<Cloth> cloth : scene->clothes)
+            addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->massPerParticle);
 
 		fluidRestDensity = scene->fluidRestDensity;
 	}
@@ -348,30 +343,23 @@ struct ParticleSolver
 		scene->numParticles += numParticles;
 	}
 
-	// cloth and spaghetti
-	void addNoodles(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<glm::vec2> & distanceParams, const std::vector<glm::int3> & bendingTriplets, const float massPerParticle, const bool doSelfCollide = true)
-	{
-		int numParticles = positions.size();
-		if (scene->numParticles + numParticles >= scene->numMaxParticles)
-		{
-			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
-			throw std::exception(message.c_str());
-		}
+	// spaghetti
+    void addNoodles(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<glm::vec2> & distanceParams, const float massPerParticle, const bool doSelfCollide = true)
+    {
+        int numParticles = positions.size();
+        if (scene->numParticles + numParticles >= scene->numMaxParticles)
+        {
+            std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
+            throw std::exception(message.c_str());
+        }
 
-		int numDistanceConstraints = distancePairs.size();
-		if (scene->numParticles + numDistanceConstraints >= scene->numMaxDistancePairs)
-		{
-			std::string message = std::string(__FILE__) + std::string("num distance pairs exceed num max distance pairs");
-			throw std::exception(message.c_str());
-		}
-
-		int numBendingTriplets = bendingTriplets.size();
-		if (scene->numBendingTriplets + numBendingTriplets >= scene->numMaxBendingTriplets)
-		{
-			std::string message = std::string(__FILE__) + std::string("num bending triplets exceed num max distance pairs");
-			throw std::exception(message.c_str());
-		}
-
+        int numDistanceConstraints = distancePairs.size();
+        if (scene->numParticles + numDistanceConstraints >= scene->numMaxDistancePairs)
+        {
+            std::string message = std::string(__FILE__) + std::string("num distance pairs exceed num max distance pairs");
+            throw std::exception(message.c_str());
+        }
+    
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
@@ -419,8 +407,73 @@ struct ParticleSolver
 
 		scene->numParticles += numParticles;
 		scene->numDistancePairs += numDistanceConstraints;
-		scene->numBendingTriplets += numBendingTriplets;
 	}
+
+    // cloth
+    void addCloth(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<glm::vec2> & distanceParams, const float massPerParticle, const bool doSelfCollide = true)
+    {
+        int numParticles = positions.size();
+        if (scene->numParticles + numParticles >= scene->numMaxParticles)
+        {
+            std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
+            throw std::exception(message.c_str());
+        }
+
+        int numDistanceConstraints = distancePairs.size();
+        if (scene->numParticles + numDistanceConstraints >= scene->numMaxDistancePairs)
+        {
+            std::string message = std::string(__FILE__) + std::string("num distance pairs exceed num max distance pairs");
+            throw std::exception(message.c_str());
+        }
+    
+		int numBlocks, numThreads;
+		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
+
+		// set positions
+		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+								   &(positions[0].x),
+								   numParticles * sizeof(float) * 3,
+								   cudaMemcpyHostToDevice));
+		// set masses
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
+												   massPerParticle,
+												   numParticles);	
+		if (doSelfCollide)
+		{ 
+			// set phases
+			setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+																  devSolidPhaseCounter,
+																  1,
+																  numParticles);
+		}
+		else
+		{ 
+			// set phases
+			setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+														   devSolidPhaseCounter,
+														   numParticles);
+			// increment phase counter
+			increment<<<1, 1>>>(devSolidPhaseCounter);
+		}
+
+		// set distance constraints
+		checkCudaErrors(cudaMemcpy(devDistancePairs + scene->numDistancePairs,
+								   &(distancePairs[0].x),
+								   numDistanceConstraints * sizeof(int) * 2,
+								   cudaMemcpyHostToDevice));
+		int numDistancePairsBlock, numDistancePairsThreads;
+		GetNumBlocksNumThreads(&numDistancePairsBlock, &numDistancePairsThreads, numDistanceConstraints);
+		accDevArr_int2<<<numDistancePairsBlock, numDistancePairsThreads>>>(devDistancePairs + scene->numDistancePairs,
+																		   make_int2(scene->numParticles),
+																		   numDistanceConstraints);
+		checkCudaErrors(cudaMemcpy(devDistanceParams + scene->numDistancePairs,
+								   &(distanceParams[0]),
+								   numDistanceConstraints * sizeof(float) * 2,
+								   cudaMemcpyHostToDevice));
+
+		scene->numParticles += numParticles;
+		scene->numDistancePairs += numDistanceConstraints;
+    }
 
 	void updateGrid(int numBlocks, int numThreads)
 	{
