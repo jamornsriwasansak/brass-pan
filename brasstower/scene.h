@@ -184,6 +184,7 @@ struct Cloth
     std::vector<glm::int2> distancePairs;
     std::vector<glm::vec2> distanceParams;
     std::vector<glm::int4> bendings;
+	std::vector<glm::int3> faces;
     float massPerParticle;
 
     static std::shared_ptr<Cloth> CreateCloth(const glm::vec3 & startPosition,
@@ -202,6 +203,7 @@ struct Cloth
         std::vector<glm::int2> & distancePairs = result->distancePairs;
         std::vector<glm::vec2> & distanceParams = result->distanceParams;
         std::vector<glm::int4> & bendings = result->bendings;
+		std::vector<glm::int3> & faces = result->faces;
 
         float lengthX = length(offsetX);
         float lengthY = length(offsetY);
@@ -219,6 +221,16 @@ struct Cloth
 				int p2 = y * numJointX + x + 1;
 				int p3 = (y + 1) * numJointX + x;
 				int p4 = (y + 1) * numJointX + x + 1;
+
+				// face
+				{
+					if (x < numJointX - 1 && y < numJointY - 1)
+					{
+						faces.push_back(glm::int3(p1, p2, p3));
+						std::cout << p1 << ", " << p2 << ", " << p3 << std::endl;
+						faces.push_back(glm::int3(p2, p3, p4));
+					}
+				}
 
                 // distance pairs
 				{
@@ -247,6 +259,7 @@ struct Cloth
 					}
 				}
 
+
 				// hack bending
 				{
 					int q[3][3];
@@ -274,7 +287,6 @@ struct Cloth
 
 					}
 				}
-
 
 				// bending constraints
 				/*
@@ -400,5 +412,7 @@ struct Scene
 	size_t numMaxDistancePairs = 0;
 	size_t numBendings = 0;
 	size_t numMaxBendings = 0;
+	size_t numWindFaces = 0;
+	size_t numMaxWindFaces = 0;
 	float radius;
 };

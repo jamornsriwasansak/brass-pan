@@ -227,14 +227,15 @@ std::shared_ptr<Scene> initRopesScene()
 {
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
 	scene->planes.push_back(Plane(glm::vec3(0, -1.1, 0), glm::vec3(0, 1, 0)));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, -5.0), glm::normalize(glm::vec3(0, 0, 1))));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, 5.0), glm::normalize(glm::vec3(0, 0, -1))));
-	scene->planes.push_back(Plane(glm::vec3(-5.0, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(Plane(glm::vec3(5.0, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
-	scene->numMaxParticles = 50000;
+	//scene->planes.push_back(Plane(glm::vec3(0, 0, -5.0), glm::normalize(glm::vec3(0, 0, 1))));
+	//scene->planes.push_back(Plane(glm::vec3(0, 0, 5.0), glm::normalize(glm::vec3(0, 0, -1))));
+	//scene->planes.push_back(Plane(glm::vec3(-5.0, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	//scene->planes.push_back(Plane(glm::vec3(5.0, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->numMaxParticles = 10000;
 	scene->numMaxRigidBodies = 128;
-	scene->numMaxDistancePairs = 1000;
+	scene->numMaxDistancePairs = 10000;
 	scene->numMaxBendings = 1000;
+	scene->numMaxWindFaces = 10000;
 	scene->radius = 0.05f;
 
 	scene->pointLight.intensity = glm::vec3(5.0f);
@@ -243,10 +244,11 @@ std::shared_ptr<Scene> initRopesScene()
 
 	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight);
 
-	scene->ropes.push_back(Rope::CreateRope(glm::vec3(0.f, 1.0f, 0.f), glm::vec3(0.f, 3.0f, 0.f), 20, 1.0f));
-	scene->ropes.push_back(Rope::CreateRope(glm::vec3(1.f, 1.0f, 0.f), glm::vec3(1.f, 2.0f, 0.f), 10, 1.0f));
+	//scene->ropes.push_back(Rope::CreateRope(glm::vec3(0.f, 1.0f, 0.f), glm::vec3(0.f, 3.0f, 0.f), 20, 1.0f));
+	//scene->ropes.push_back(Rope::CreateRope(glm::vec3(1.f, 1.0f, 0.f), glm::vec3(1.f, 2.0f, 0.f), 10, 1.0f));
 
-    scene->clothes.push_back(Cloth::CreateCloth(glm::vec3(2.f, 2.f, 2.f), glm::vec3(0.1f, 0.f, 0.f), glm::vec3(0.f, 0.1f, 0.f), 10, 10, 1.0f));
+    scene->clothes.push_back(Cloth::CreateCloth(glm::vec3(2.f, 20.f, 2.f), glm::vec3(0.1f, 0.f, 0.f), glm::vec3(0.f, 0.0f, 0.1f), 20, 20, 1.0f));
+    scene->clothes.push_back(Cloth::CreateCloth(glm::vec3(5.f, 20.f, 5.f), glm::vec3(0.1f, 0.f, 0.f), glm::vec3(0.f, 0.1f, 0.0f), 20, 20, 1.0f));
 
 	return scene;
 }

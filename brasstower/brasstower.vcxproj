@@ -119,6 +119,7 @@ copy /y /d $(SolutionDir)dependencies\bin\*.dll $(SolutionDir)sandbox</Command>
     <ClInclude Include="imgui\stb_rect_pack.h" />
     <ClInclude Include="imgui\stb_textedit.h" />
     <ClInclude Include="imgui\stb_truetype.h" />
+    <ClInclude Include="kernel\wind.cuh" />
     <ClInclude Include="opengl\framebuffer.h" />
     <ClInclude Include="particlerenderer.cuh" />
     <ClInclude Include="particlesolver.cuh" />

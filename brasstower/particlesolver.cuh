@@ -12,17 +12,18 @@
 #include "kernel/shapematching.cuh"
 #include "kernel/distance.cuh"
 #include "kernel/bending.cuh"
+#include "kernel/wind.cuh"
 
 // SOLVER //
 
 __global__ void
-applyForces(float3 * __restrict__ velocities,
+applyGravity(float3 * __restrict__ positions,
 			const int numParticles,
 			const float deltaTime)
 {
 	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numParticles) { return; }
-	velocities[i] += make_float3(0.0f, -9.8f, 0.0f) * deltaTime;
+	positions[i] += make_float3(0.0f, -9.8f, 0.0f) * deltaTime * deltaTime;
 }
 
 __global__ void
@@ -170,6 +171,9 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devFluidDensities, scene->numMaxParticles * sizeof(float)));
 		checkCudaErrors(cudaMalloc(&devFluidNormals, scene->numMaxParticles * sizeof(float3)));
 
+		// alloc wind faces
+		checkCudaErrors(cudaMalloc(&devWindFaces, scene->numMaxWindFaces * sizeof(int3)));
+
 		// start initing the scene
 		for (std::shared_ptr<RigidBody> rigidBody : scene->rigidBodies)
 			addRigidBody(rigidBody->positions, rigidBody->positions_CM_Origin, rigidBody->massPerParticle);
@@ -184,7 +188,7 @@ struct ParticleSolver
 			addNoodles(ropes->positions, ropes->distancePairs, ropes->distanceParams, ropes->massPerParticle);
 
         for (std::shared_ptr<Cloth> cloth : scene->clothes)
-            addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->bendings, cloth->massPerParticle);
+            addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->bendings, cloth->faces, cloth->massPerParticle);
 
 		fluidRestDensity = scene->fluidRestDensity;
 	}
@@ -413,7 +417,13 @@ struct ParticleSolver
 	}
 
     // cloth
-    void addCloth(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<glm::vec2> & distanceParams, const std::vector<glm::int4> & bendings, const float massPerParticle, const bool doSelfCollide = true)
+	void addCloth(const std::vector<glm::vec3> & positions,
+				  const std::vector<glm::int2> & distancePairs,
+				  const std::vector<glm::vec2> & distanceParams,
+				  const std::vector<glm::int4> & bendings,
+				  const std::vector<glm::int3> & faces,
+				  const float massPerParticle,
+				  const bool doSelfCollide = true)
     {
         int numParticles = positions.size();
         if (scene->numParticles + numParticles >= scene->numMaxParticles)
@@ -433,6 +443,13 @@ struct ParticleSolver
 		if (scene->numBendings + numBendings >= scene->numMaxBendings)
 		{
             std::string message = std::string(__FILE__) + std::string("num bendings exceed num max bendings");
+            throw std::exception(message.c_str());
+		}
+
+		int numFaces = faces.size();
+		if (scene->numWindFaces + numFaces >= scene->numMaxWindFaces)
+		{
+            std::string message = std::string(__FILE__) + std::string("num faces exceed num max faces");
             throw std::exception(message.c_str());
 		}
 
@@ -492,9 +509,22 @@ struct ParticleSolver
 															    make_int4(scene->numParticles),
 															    numBendings);
 
+		// add faces
+		int numWindFaceBlocks, numWindFaceThreads;
+		GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, numFaces);
+		checkCudaErrors(cudaMemcpy(devWindFaces + scene->numWindFaces,
+								   &(faces[0].x),
+								   numFaces * sizeof(int3),
+								   cudaMemcpyHostToDevice));
+		accDevArr_int3<<<numWindFaceBlocks, numWindFaceThreads>>>(devWindFaces + scene->numWindFaces,
+																  make_int3(scene->numParticles),
+																  numFaces);
+
+		//scene->numTinFoilFaces += numFaces;
 		scene->numBendings += numBendings;
 		scene->numParticles += numParticles;
 		scene->numDistancePairs += numDistanceConstraints;
+		scene->numWindFaces += numFaces;
     }
 
 	void updateGrid(int numBlocks, int numThreads)
@@ -571,10 +601,6 @@ struct ParticleSolver
 
 		for (int i = 0;i < numSubTimeStep;i++)
 		{ 
-			applyForces<<<numBlocks, numThreads>>>(devVelocities,
-												   scene->numParticles,
-												   subDeltaTime);
-
 			// we need to make picked particle immovable
 			if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
 			{
@@ -588,6 +614,10 @@ struct ParticleSolver
 														scene->numParticles,
 														subDeltaTime);
 
+			applyGravity<<<numBlocks, numThreads>>>(devNewPositions,
+													scene->numParticles,
+													subDeltaTime);
+
 			// compute grid
 			updateGrid(numBlocks, numThreads);
 
@@ -599,7 +629,6 @@ struct ParticleSolver
 															  devPositions,
 															  MASS_SCALING_CONSTANT,
 															  scene->numParticles);
-
 			// stabilize iterations
 			for (int i = 0; i < 2; i++)
 			{
@@ -613,6 +642,20 @@ struct ParticleSolver
 															  scene->radius);
 				}
 			}
+
+			// apply Wind Force
+			int numWindFaceBlocks, numWindFaceThreads;
+			GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, scene->numWindFaces);
+			setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+			applyWindForce<<<numWindFaceBlocks, numWindFaceThreads>>>(devDeltaX,
+																	  devNewPositions,
+																	  devVelocities,
+																	  devMasses,
+																	  devMapToNewIds,
+																	  devWindFaces,
+																	  scene->numWindFaces,
+																	  subDeltaTime);
+			accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
@@ -712,7 +755,7 @@ struct ParticleSolver
 																									  devRigidBodyInitialPositions,
 																									  devRigidBodyParticleIdRange);
 				}
-			}
+			} // end projecting constraints
 
 			updateVelocity<<<numBlocks, numThreads>>>(devVelocities,
 													  devNewPositions,
@@ -780,7 +823,7 @@ struct ParticleSolver
 			std::swap(devVelocities, devTempFloat3);
 
 			resetGrid(numBlocks, numThreads);
-		}
+		} // end loop over substeps
 
 		// we need to make picked particle immovable
 		if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
@@ -800,7 +843,6 @@ struct ParticleSolver
 	int *		devPhases;
 	int *		devMapToOriginalIds;
 	int *		devMapToNewIds;
-	int *		devNewIds;
 
 	float3 *	devSortedNewPositions;
 	float3 *	devSortedPositions;
@@ -835,6 +877,8 @@ struct ParticleSolver
 	float2 *	devDistanceParams;
 
 	int4 *		devBendings;
+
+	int3 *		devWindFaces;
 
 	void *		devTempStorage = nullptr;
 	size_t		devTempStorageSize = 0;
