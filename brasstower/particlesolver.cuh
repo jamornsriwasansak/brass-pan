@@ -142,6 +142,9 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devDistancePairs, scene->numMaxDistancePairs * sizeof(int2)));
 		checkCudaErrors(cudaMalloc(&devDistanceParams, scene->numMaxDistancePairs * sizeof(float2)));
 
+		// alloc bending constraints
+		checkCudaErrors(cudaMalloc(&devBendings, scene->numMaxBendings * sizeof(int4)));
+
 		// alloc and set phase counter
 		checkCudaErrors(cudaMalloc(&devSolidPhaseCounter, sizeof(int)));
 		checkCudaErrors(cudaMemset(devSolidPhaseCounter, 1, sizeof(int)));
@@ -181,7 +184,7 @@ struct ParticleSolver
 			addNoodles(ropes->positions, ropes->distancePairs, ropes->distanceParams, ropes->massPerParticle);
 
         for (std::shared_ptr<Cloth> cloth : scene->clothes)
-            addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->massPerParticle);
+            addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->bendings, cloth->massPerParticle);
 
 		fluidRestDensity = scene->fluidRestDensity;
 	}
@@ -410,7 +413,7 @@ struct ParticleSolver
 	}
 
     // cloth
-    void addCloth(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<glm::vec2> & distanceParams, const float massPerParticle, const bool doSelfCollide = true)
+    void addCloth(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<glm::vec2> & distanceParams, const std::vector<glm::int4> & bendings, const float massPerParticle, const bool doSelfCollide = true)
     {
         int numParticles = positions.size();
         if (scene->numParticles + numParticles >= scene->numMaxParticles)
@@ -420,12 +423,19 @@ struct ParticleSolver
         }
 
         int numDistanceConstraints = distancePairs.size();
-        if (scene->numParticles + numDistanceConstraints >= scene->numMaxDistancePairs)
+        if (scene->numDistancePairs + numDistanceConstraints >= scene->numMaxDistancePairs)
         {
             std::string message = std::string(__FILE__) + std::string("num distance pairs exceed num max distance pairs");
             throw std::exception(message.c_str());
         }
     
+		int numBendings = bendings.size();
+		if (scene->numBendings + numBendings >= scene->numMaxBendings)
+		{
+            std::string message = std::string(__FILE__) + std::string("num bendings exceed num max bendings");
+            throw std::exception(message.c_str());
+		}
+
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
@@ -467,10 +477,22 @@ struct ParticleSolver
 																		   make_int2(scene->numParticles),
 																		   numDistanceConstraints);
 		checkCudaErrors(cudaMemcpy(devDistanceParams + scene->numDistancePairs,
-								   &(distanceParams[0]),
+								   &(distanceParams[0].x),
 								   numDistanceConstraints * sizeof(float) * 2,
 								   cudaMemcpyHostToDevice));
 
+		int numBendingBlocks, numBendingThreads;
+		GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, numBendings);
+		// set bending constraints
+		checkCudaErrors(cudaMemcpy(devBendings + scene->numBendings,
+								   &(bendings[0].x),
+								   numBendings * sizeof(int4),
+								   cudaMemcpyHostToDevice));
+		accDevArr_int4<<<numBendingBlocks, numBendingThreads>>>(devBendings + scene->numBendings,
+															    make_int4(scene->numParticles),
+															    numBendings);
+
+		scene->numBendings += numBendings;
 		scene->numParticles += numParticles;
 		scene->numDistancePairs += numDistanceConstraints;
     }
@@ -594,7 +616,7 @@ struct ParticleSolver
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
-			for (int j = 0; j < 10; j++)
+			for (int j = 0; j < 5; j++)
 			{
 				// solving all plane collisions
 				for (const Plane & plane : scene->planes)
@@ -663,6 +685,23 @@ struct ParticleSolver
 																				   devMapToNewIds,
 																				   scene->numDistancePairs);
 					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+				}
+
+				// solve all bending constraints
+				if (scene->numBendings > 0)
+				{
+					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+					int numBendingBlocks, int numBendingThreads;
+					GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, scene->numBendings);
+					bendingConstraints<<<numBendingBlocks, numBendingThreads>>>(devDeltaX,
+																				devNewPositions,
+																				devInvScaledMasses,
+																				devBendings,
+																				devMapToNewIds,
+																				scene->numBendings);
+					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+					//cudaDeviceSynchronize();
+					//std::cout << std::endl;
 				}
 
 				// solve all rigidbody constraints
@@ -796,6 +835,8 @@ struct ParticleSolver
 
 	int2 *		devDistancePairs;
 	float2 *	devDistanceParams;
+
+	int4 *		devBendings;
 
 	void *		devTempStorage = nullptr;
 	size_t		devTempStorageSize = 0;

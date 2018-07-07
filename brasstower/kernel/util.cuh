@@ -195,6 +195,16 @@ accDevArr_int3(int3 * __restrict__ devArr,
 }
 
 __inline__ __global__ void
+accDevArr_int4(int4 * __restrict__ devArr,
+			   const int4 delta,
+			   const int numValues)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numValues) { return; }
+	devArr[i] += delta;
+}
+
+__inline__ __global__ void
 initOrder_int(int * __restrict__ devArr,
 			  const int numValues)
 {

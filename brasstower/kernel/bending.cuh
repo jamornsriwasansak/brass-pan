@@ -1,46 +1,74 @@
 #include "kernel/cubrasstower.cuh"
 
 __global__ void
-bendingTripletsConstraints(float3 * deltaX,
-						   const float3 * __restrict__ positions,
-						   const float * __restrict__ invMasses,
-						   const int3 * __restrict__ triplets,
-						   const int * __restrict__ newIds,
-						   const int numPairs)
+bendingConstraints(float3 * deltaX,
+				   const float3 * __restrict__ positions,
+				   const float * __restrict__ invMasses,
+				   const int4 * __restrict__ bendings,
+				   const int * __restrict__ newIds,
+				   const int numBendings)
 {
-	/*int launchIndex = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
-	if (launchIndex >= numPairs) { return; }
+	int launchIndex = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (launchIndex >= numBendings) { return; }
 
-	int3 triplet = triplets[launchIndex];
+	int4 ids = bendings[0];
+	int id1 = newIds[ids.x];
+	int id2 = newIds[ids.y];
+	int id3 = newIds[ids.z];
+	int id4 = newIds[ids.w];
 
-	int id1 = newIds[triplet.x];
-	int id2 = newIds[triplet.y];
-	int id3 = newIds[triplet.z];
+	float3 P1 = positions[id1];
+	float3 P2 = positions[id2] - P1;
+	float3 P3 = positions[id3] - P1;
+	float3 P4 = positions[id4] - P1;
 
-	float3 x1 = positions[id1];
-	float3 x2 = positions[id2];
-	float3 x3 = positions[id3];
+	float3 cP2P3 = cross(P2, P3);
+	float3 cP2P4 = cross(P2, P4);
 
-	float3 v1 = x1 - x2;
-	float3 v3 = x3 - x2;
-	float dist1 = length(v1);
-	float dist3 = length(v3);
-	float3 n1 = v1 / dist1;
-	float3 n3 = v3 / dist3;
+	float lengthCP2P3 = length(cP2P3);
+	if (lengthCP2P3 <= 1e-5f) { return; }
 
-	float d = dot(n1, n3);
-	float k = 1.0f / sqrtf(1.0f - d * d);
-	
-	float3 gradient1 = (d * v1 - dist1 * n3) * k;
-	float3 gradient3 = (d * v3 - dist3 * n1) * k;
+	float lengthCP2P4 = length(cP2P4);
+	if (lengthCP2P4 <= 1e-5f) { return; }
 
-	float constraint = acosf(d) - MATH_PI;
+	float invLengthCP2P3 = 1.0f / lengthCP2P3;
+	float invLengthCP2P4 = 1.0f / length(cP2P4);
+
+	float3 N1 = cP2P3 * invLengthCP2P3;
+	float3 N2 = cP2P4 * invLengthCP2P4;
+
+	float d = dot(N1, N2);
+	d = min(max(d, -0.99999f), 0.99999f);
+	//printf("d:%f\n", d);
+
+	float3 cP2N1 = cross(P2, N1);
+	float3 cP2N2 = cross(P2, N2);
+	float3 cP3N1 = cross(P3, N1);
+	float3 cP3N2 = cross(P3, N2);
+	float3 cP4N1 = cross(P4, N1);
+	float3 cP4N2 = cross(P4, N2);
+
+	float3 Q3 = (cP2N2 - cP2N1 * d) * invLengthCP2P3;
+	float3 Q4 = (cP2N1 - cP2N2 * d) * invLengthCP2P4;
+	float3 Q2 = -(cP3N2 - cP3N1 * d) * invLengthCP2P3 - (cP4N1 - cP4N2 * d) * invLengthCP2P4;
+	float3 Q1 = -Q2 - Q3 - Q4;
 
 	float w1 = invMasses[id1];
+	float w2 = invMasses[id2];
 	float w3 = invMasses[id3];
+	float w4 = invMasses[id4];
 
-	float s = constraint / (w1 * dot(gradient1, gradient1) + w3 * dot(gradient3, gradient3));
+	float denominator = w1 * length2(Q1) + w2 * length2(Q2) + w3 * length2(Q3) + w4 * length2(Q4);
+	float numerator = sqrtf(1.0f - d * d) * (acos(d) - 3.141592);
+	if (denominator <= 1e-5f) return;
+	//printf("denominator:%f\n", denominator);
+	//printf("numerator:%f\n", numerator);
+	float scaling = numerator / denominator * 0.0f;
 
-	atomicAdd(deltaX, id1, -s * w1 * gradient1);
-	atomicAdd(deltaX, id3, -s * w3 * gradient3);*/
+	//printf("scaling:%f\n", scaling);
+
+	atomicAdd(deltaX, id1, -w1 * Q1 * scaling);
+	atomicAdd(deltaX, id2, -w2 * Q2 * scaling);
+	atomicAdd(deltaX, id3, -w3 * Q3 * scaling);
+	atomicAdd(deltaX, id4, -w4 * Q4 * scaling);
 }

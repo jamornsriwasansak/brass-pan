@@ -24,6 +24,8 @@ distanceConstraints(float3 * deltaX,
 	float3 x2 = positions[id2];
 	float3 x12 = x1 - x2;
 	float dist12 = length(x12);
+	if (dist12 <= 1e-5f) { return; }
+
 	float3 n = x12 / dist12;
 
 	float w1 = invMasses[id1];

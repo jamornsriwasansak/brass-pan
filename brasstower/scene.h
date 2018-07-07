@@ -193,6 +193,7 @@ struct Cloth
                                               const int numJointY,
                                               const float massPerParticle)
     {
+		const float stiffness = 0.2f;
         std::shared_ptr<Cloth> result = std::make_shared<Cloth>();
         result->massPerParticle = massPerParticle;
 
@@ -210,22 +211,50 @@ struct Cloth
         {
             for (int y = 0; y < numJointY; y++)
             {
+				// positions
                 positions.push_back(startPosition + x * offsetX + y * offsetY);
 
                 // distance pairs
-                if (x < numJointX - 1)
-                {
-                    // horizontal
-                    distancePairs.push_back(glm::int2(y * numJointX + x, y * numJointX + x + 1));
-                    distanceParams.push_back(glm::vec2(lengthX, 0.3f));
+				{
+					if (x < numJointX - 1)
+					{
+						// horizontal
+						distancePairs.push_back(glm::int2(y * numJointX + x, y * numJointX + x + 1));
+						distanceParams.push_back(glm::vec2(lengthX, stiffness));
 
-                }
-                if (y < numJointY - 1)
-                {
-                    // vertical
-                    distancePairs.push_back(glm::int2(y * numJointX + x, (y + 1) * numJointX + x));
-                    distanceParams.push_back(glm::vec2(lengthX, 0.3f));
-                }
+					}
+					if (y < numJointY - 1)
+					{
+						// vertical
+						distancePairs.push_back(glm::int2(y * numJointX + x, (y + 1) * numJointX + x));
+						distanceParams.push_back(glm::vec2(lengthY, stiffness));
+
+						// diagonal1
+						if (x < numJointX - 1)
+						{
+							distancePairs.push_back(glm::int2(y * numJointX + x, (y + 1) * numJointX + x + 1));
+							distanceParams.push_back(glm::vec2(lengthDiag, stiffness));
+						}
+
+						// diagonal2
+						if (x > 0)
+						{
+							distancePairs.push_back(glm::int2(y * numJointX + x, (y + 1) * numJointX + x - 1));
+							distanceParams.push_back(glm::vec2(lengthDiag, stiffness));
+						}
+					}
+				}
+
+				// bending constraints
+				{
+					if (x < numJointX - 1 && y < numJointY - 1)
+					{
+						bendings.push_back(glm::int4(y * numJointX + x,
+													 (y + 1) * numJointX + x + 1,
+													 (y + 1) * numJointX + x,
+													 y * numJointX + x + 1));
+					}
+				}
             }
         }
         return result;
@@ -332,5 +361,7 @@ struct Scene
 	size_t numMaxRigidBodies = 0;
 	size_t numDistancePairs = 0;
 	size_t numMaxDistancePairs = 0;
+	size_t numBendings = 0;
+	size_t numMaxBendings = 0;
 	float radius;
 };
