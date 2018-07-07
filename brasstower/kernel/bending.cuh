@@ -1,6 +1,5 @@
 #include "kernel/cubrasstower.cuh"
 
-// buggy doesn't work
 __global__ void
 bendingConstraints(float3 * deltaX,
 				   const float3 * __restrict__ positions,
@@ -12,7 +11,7 @@ bendingConstraints(float3 * deltaX,
 	int launchIndex = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (launchIndex >= numBendings) { return; }
 
-	int4 ids = bendings[0];
+	int4 ids = bendings[launchIndex];
 	int id1 = newIds[ids.x];
 	int id2 = newIds[ids.y];
 	int id3 = newIds[ids.z];
@@ -59,11 +58,11 @@ bendingConstraints(float3 * deltaX,
 	float w4 = invMasses[id4];
 
 	float denominator = w1 * length2(Q1) + w2 * length2(Q2) + w3 * length2(Q3) + w4 * length2(Q4);
-	float numerator = sqrtf(1.0f - d * d) * (acos(d) - acos(-1.0f));
+	float numerator = sqrtf(1.0f - d * d) * (acos(d) - 3.141592f);
 	if (denominator <= 1e-5f) return;
 	float scaling = numerator / denominator;
 
-	const float kBend = 0.05f;
+	const float kBend = 0.8f;
 
 	float3 deltaX1 = -w1 * Q1 * scaling * kBend;
 	float3 deltaX2 = -w2 * Q2 * scaling * kBend;
