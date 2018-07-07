@@ -194,6 +194,7 @@ struct Cloth
                                               const float massPerParticle)
     {
 		const float stiffness = 0.2f;
+		const float stiffness2 = 0.1f;
         std::shared_ptr<Cloth> result = std::make_shared<Cloth>();
         result->massPerParticle = massPerParticle;
 
@@ -212,49 +213,85 @@ struct Cloth
             for (int y = 0; y < numJointY; y++)
             {
 				// positions
-                positions.push_back(startPosition + x * offsetX + y * offsetY);
+                positions.push_back(startPosition + y * offsetX + x * offsetY);
+
+				int p1 = y * numJointX + x;
+				int p2 = y * numJointX + x + 1;
+				int p3 = (y + 1) * numJointX + x;
+				int p4 = (y + 1) * numJointX + x + 1;
 
                 // distance pairs
 				{
+					// horizontal
 					if (x < numJointX - 1)
 					{
-						// horizontal
-						distancePairs.push_back(glm::int2(y * numJointX + x, y * numJointX + x + 1));
+						distancePairs.push_back(glm::int2(p1, p2));
 						distanceParams.push_back(glm::vec2(lengthX, stiffness));
-
 					}
+
+					// vertical
 					if (y < numJointY - 1)
 					{
-						// vertical
-						distancePairs.push_back(glm::int2(y * numJointX + x, (y + 1) * numJointX + x));
+						distancePairs.push_back(glm::int2(p1, p3));
 						distanceParams.push_back(glm::vec2(lengthY, stiffness));
+					}
 
-						// diagonal1
-						if (x < numJointX - 1)
-						{
-							distancePairs.push_back(glm::int2(y * numJointX + x, (y + 1) * numJointX + x + 1));
-							distanceParams.push_back(glm::vec2(lengthDiag, stiffness));
-						}
+					// diagonal1
+					if (x < numJointX - 1 && y < numJointY - 1)
+					{
+						distancePairs.push_back(glm::int2(p1, p4));
+						distanceParams.push_back(glm::vec2(lengthDiag, stiffness));
 
-						// diagonal2
-						if (x > 0)
-						{
-							distancePairs.push_back(glm::int2(y * numJointX + x, (y + 1) * numJointX + x - 1));
-							distanceParams.push_back(glm::vec2(lengthDiag, stiffness));
-						}
+						distancePairs.push_back(glm::int2(p2, p3));
+						distanceParams.push_back(glm::vec2(lengthDiag, stiffness));
 					}
 				}
 
+				// hack bending
+				{
+					int q[3][3];
+					for (int i = -1; i <= 1;i++)
+					{
+						for (int j = -1; j <= 1;j++)
+						{
+							q[i + 1][j + 1] = (y + i) * numJointX + x + j;
+						}
+					}
+
+					if (x > 0 && y > 0 && x < numJointX - 1 && y < numJointY - 1)
+					{
+						for (int i = 0; i < 3; i++)
+						{
+							distancePairs.push_back(glm::int2(q[i][0], q[i][2]));
+							distanceParams.push_back(glm::vec2(lengthX * 2, stiffness2));
+						}
+
+						for (int i = 0; i < 3; i++)
+						{
+							distancePairs.push_back(glm::int2(q[0][i], q[2][i]));
+							distanceParams.push_back(glm::vec2(lengthY * 2, stiffness2));
+						}
+
+					}
+				}
+
+
 				// bending constraints
+				/*
 				{
 					if (x < numJointX - 1 && y < numJointY - 1)
 					{
-						bendings.push_back(glm::int4(y * numJointX + x,
-													 (y + 1) * numJointX + x + 1,
-													 (y + 1) * numJointX + x,
-													 y * numJointX + x + 1));
+						if ((x + y) % 2)
+						{
+							bendings.push_back(glm::int4(p3, p2, p1, p4));
+						}
+						else
+						{
+							bendings.push_back(glm::int4(p1, p4, p3, p2));
+						}
 					}
 				}
+				*/
             }
         }
         return result;

@@ -700,8 +700,6 @@ struct ParticleSolver
 																				devMapToNewIds,
 																				scene->numBendings);
 					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-					//cudaDeviceSynchronize();
-					//std::cout << std::endl;
 				}
 
 				// solve all rigidbody constraints

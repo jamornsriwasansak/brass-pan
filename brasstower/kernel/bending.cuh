@@ -1,5 +1,6 @@
 #include "kernel/cubrasstower.cuh"
 
+// buggy doesn't work
 __global__ void
 bendingConstraints(float3 * deltaX,
 				   const float3 * __restrict__ positions,
@@ -38,8 +39,7 @@ bendingConstraints(float3 * deltaX,
 	float3 N2 = cP2P4 * invLengthCP2P4;
 
 	float d = dot(N1, N2);
-	d = min(max(d, -0.99999f), 0.99999f);
-	//printf("d:%f\n", d);
+	d = min(max(d, -1.0f), 1.0f);
 
 	float3 cP2N1 = cross(P2, N1);
 	float3 cP2N2 = cross(P2, N2);
@@ -48,9 +48,9 @@ bendingConstraints(float3 * deltaX,
 	float3 cP4N1 = cross(P4, N1);
 	float3 cP4N2 = cross(P4, N2);
 
-	float3 Q3 = (cP2N2 - cP2N1 * d) * invLengthCP2P3;
-	float3 Q4 = (cP2N1 - cP2N2 * d) * invLengthCP2P4;
-	float3 Q2 = -(cP3N2 - cP3N1 * d) * invLengthCP2P3 - (cP4N1 - cP4N2 * d) * invLengthCP2P4;
+	float3 Q3 = (cP2N2 - cP2N1 * d) / lengthCP2P3;
+	float3 Q4 = (cP2N1 - cP2N2 * d) / lengthCP2P4;
+	float3 Q2 = -(cP3N2 - cP3N1 * d) / lengthCP2P3 - (cP4N1 - cP4N2 * d) / lengthCP2P4;
 	float3 Q1 = -Q2 - Q3 - Q4;
 
 	float w1 = invMasses[id1];
@@ -59,16 +59,19 @@ bendingConstraints(float3 * deltaX,
 	float w4 = invMasses[id4];
 
 	float denominator = w1 * length2(Q1) + w2 * length2(Q2) + w3 * length2(Q3) + w4 * length2(Q4);
-	float numerator = sqrtf(1.0f - d * d) * (acos(d) - 3.141592);
+	float numerator = sqrtf(1.0f - d * d) * (acos(d) - acos(-1.0f));
 	if (denominator <= 1e-5f) return;
-	//printf("denominator:%f\n", denominator);
-	//printf("numerator:%f\n", numerator);
-	float scaling = numerator / denominator * 0.0f;
+	float scaling = numerator / denominator;
 
-	//printf("scaling:%f\n", scaling);
+	const float kBend = 0.05f;
 
-	atomicAdd(deltaX, id1, -w1 * Q1 * scaling);
-	atomicAdd(deltaX, id2, -w2 * Q2 * scaling);
-	atomicAdd(deltaX, id3, -w3 * Q3 * scaling);
-	atomicAdd(deltaX, id4, -w4 * Q4 * scaling);
+	float3 deltaX1 = -w1 * Q1 * scaling * kBend;
+	float3 deltaX2 = -w2 * Q2 * scaling * kBend;
+	float3 deltaX3 = -w3 * Q3 * scaling * kBend;
+	float3 deltaX4 = -w4 * Q4 * scaling * kBend;
+
+	atomicAdd(deltaX, id1, deltaX1);
+	atomicAdd(deltaX, id2, deltaX2);
+	atomicAdd(deltaX, id3, deltaX3);
+	atomicAdd(deltaX, id4, deltaX4);
 }

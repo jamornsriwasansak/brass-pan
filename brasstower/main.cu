@@ -226,11 +226,11 @@ std::shared_ptr<Scene> initFluidScene()
 std::shared_ptr<Scene> initRopesScene()
 {
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
-	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
-	scene->planes.push_back(Plane(glm::vec3(-2.8, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(Plane(glm::vec3(2.8, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(0, -1.1, 0), glm::vec3(0, 1, 0)));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, -5.0), glm::normalize(glm::vec3(0, 0, 1))));
+	scene->planes.push_back(Plane(glm::vec3(0, 0, 5.0), glm::normalize(glm::vec3(0, 0, -1))));
+	scene->planes.push_back(Plane(glm::vec3(-5.0, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(5.0, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
 	scene->numMaxParticles = 50000;
 	scene->numMaxRigidBodies = 128;
 	scene->numMaxDistancePairs = 1000;
@@ -246,7 +246,7 @@ std::shared_ptr<Scene> initRopesScene()
 	scene->ropes.push_back(Rope::CreateRope(glm::vec3(0.f, 1.0f, 0.f), glm::vec3(0.f, 3.0f, 0.f), 20, 1.0f));
 	scene->ropes.push_back(Rope::CreateRope(glm::vec3(1.f, 1.0f, 0.f), glm::vec3(1.f, 2.0f, 0.f), 10, 1.0f));
 
-    scene->clothes.push_back(Cloth::CreateCloth(glm::vec3(2.f, 2.f, 2.f), glm::vec3(-0.105f, 0.f, 0.f), glm::vec3(0.f, -0.105f, 0.f), 10, 10, 0.01f));
+    scene->clothes.push_back(Cloth::CreateCloth(glm::vec3(2.f, 2.f, 2.f), glm::vec3(0.1f, 0.f, 0.f), glm::vec3(0.f, 0.1f, 0.f), 10, 10, 1.0f));
 
 	return scene;
 }
