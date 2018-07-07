@@ -76,6 +76,40 @@ void printPair(T * dev, int size)
 	free(tmp);
 }
 
+__inline__ __global__ void
+printIfNanKernel(int * p, float3 * dev, int size)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= size) { return; }
+	if (!isfinite(dev[i].x) || !isfinite(dev[i].y) || !isfinite(dev[i].z))
+	{
+		atomicAdd(p, 1);
+	}
+}
+
+void printIfNan(float3 * dev, int size, const char * message)
+{
+	int numBlocks, numThreads;
+
+	int * devTmp;
+	cudaMalloc(&devTmp, sizeof(int));
+	cudaMemset(devTmp, 0, sizeof(int));
+
+	GetNumBlocksNumThreads(&numBlocks, &numThreads, size);
+	printIfNanKernel<<<numBlocks, numThreads>>>(devTmp, dev, size);
+	cudaDeviceSynchronize();
+
+	int out;
+	cudaMemcpy(&out, devTmp, sizeof(int), cudaMemcpyDeviceToHost);
+
+	if (out > 0)
+	{
+		std::cout << message << std::endl;
+	}
+	
+	cudaFree(devTmp);
+}
+
 // PARTICLE SYSTEM //
 
 __inline__ __device__ void

@@ -643,6 +643,7 @@ struct ParticleSolver
 				}
 			}
 
+			/*
 			// apply Wind Force
 			int numWindFaceBlocks, numWindFaceThreads;
 			GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, scene->numWindFaces);
@@ -656,6 +657,7 @@ struct ParticleSolver
 																	  scene->numWindFaces,
 																	  subDeltaTime);
 			accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+			*/
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
@@ -671,6 +673,7 @@ struct ParticleSolver
 																				make_float3(plane.normal),
 																				scene->radius);
 				}
+				printIfNan(devNewPositions, scene->numParticles, "after particle plane collision");
 
 				// solving all particles collisions
 				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
@@ -684,6 +687,7 @@ struct ParticleSolver
 																			   scene->numParticles,
 																			   scene->radius);
 				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+				printIfNan(devNewPositions, scene->numParticles, "after particle particle collision");
 
 				// fluid
 				fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
@@ -698,6 +702,7 @@ struct ParticleSolver
 													   devCellEnd,
 													   scene->numParticles,
 													   useAkinciCohesionTension);
+				printIfNan(devNewPositions, scene->numParticles, "after fluid lambda");
 
 				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
 				fluidPosition<<<numBlocks, numThreads>>>(devDeltaX,
@@ -713,6 +718,7 @@ struct ParticleSolver
 														 scene->numParticles,
 														 useAkinciCohesionTension);
 				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+				printIfNan(devNewPositions, scene->numParticles, "after fluid position");
 
 				// solve all distance constraints
 				if (scene->numDistancePairs > 0)
@@ -728,6 +734,7 @@ struct ParticleSolver
 																				   devMapToNewIds,
 																				   scene->numDistancePairs);
 					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+					printIfNan(devNewPositions, scene->numParticles, "after distance");
 				}
 
 				// solve all bending constraints

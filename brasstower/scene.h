@@ -227,7 +227,6 @@ struct Cloth
 					if (x < numJointX - 1 && y < numJointY - 1)
 					{
 						faces.push_back(glm::int3(p1, p2, p3));
-						std::cout << p1 << ", " << p2 << ", " << p3 << std::endl;
 						faces.push_back(glm::int3(p2, p3, p4));
 					}
 				}
