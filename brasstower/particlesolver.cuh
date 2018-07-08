@@ -537,16 +537,23 @@ struct ParticleSolver
 								   numDistanceConstraints * sizeof(float) * 2,
 								   cudaMemcpyHostToDevice));
 
-		int numBendingBlocks, numBendingThreads;
-		GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, numBendings);
-		// set bending constraints
-		checkCudaErrors(cudaMemcpy(devBendings + scene->numBendings,
-								   &(bendings[0].x),
-								   numBendings * sizeof(int4),
-								   cudaMemcpyHostToDevice));
-		accDevArr_int4<<<numBendingBlocks, numBendingThreads>>>(devBendings + scene->numBendings,
-															    make_int4(scene->numParticles),
-															    numBendings);
+		std::cout << "after4" << std::endl;
+		checkCudaLastErrors();
+		if (numBendings > 0)
+		{ 
+			int numBendingBlocks, numBendingThreads;
+			GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, numBendings);
+			// set bending constraints
+			checkCudaErrors(cudaMemcpy(devBendings + scene->numBendings,
+									   &(bendings[0].x),
+									   numBendings * sizeof(int4),
+									   cudaMemcpyHostToDevice));
+			std::cout << "after5" << std::endl;
+			checkCudaLastErrors();
+			accDevArr_int4<<<numBendingBlocks, numBendingThreads>>>(devBendings + scene->numBendings,
+																	make_int4(scene->numParticles),
+																	numBendings);
+		}
 
 		// add faces
 		int numWindFaceBlocks, numWindFaceThreads;
