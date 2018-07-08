@@ -220,7 +220,8 @@ struct ParticleSolver
 	{
 		int numBlocks, numThreads;
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
-		setDevArr_int<<<numBlocks, numThreads>>>(devGroupIds, groupIdCounter++, numParticles);
+		setDevArr_int<<<numBlocks, numThreads>>>(devGroupIds + start, groupIdCounter, numParticles);
+		groupIdCounter++;
 	}
 
     int queryOriginalParticleId(int newParticleId)
