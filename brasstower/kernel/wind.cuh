@@ -43,9 +43,9 @@ applyWindForce(float3 * deltaX,
 	float3 liftForce = 100.0f * (lenV * lenV) * area * dot(faceNormal, vhat) * uhat;
 
 	float3 force = dragForce + liftForce;
+	float3 move = force * deltaTime * deltaTime;
 
-	//printf("%d %d %d\n", id1, id2, id3);
-	atomicAdd(deltaX, id1, force * deltaTime * deltaTime);
-	atomicAdd(deltaX, id2, force * deltaTime * deltaTime);
-	atomicAdd(deltaX, id3, force * deltaTime * deltaTime);
+	atomicAdd(deltaX, id1, move);
+	atomicAdd(deltaX, id2, move);
+	atomicAdd(deltaX, id3, move);
 }
