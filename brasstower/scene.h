@@ -185,6 +185,7 @@ struct Cloth
     std::vector<glm::vec2> distanceParams;
     std::vector<glm::int4> bendings;
 	std::vector<glm::int3> faces;
+	std::vector<int> immovables;
     float massPerParticle;
 
     static std::shared_ptr<Cloth> CreateCloth(const glm::vec3 & startPosition,
@@ -192,7 +193,11 @@ struct Cloth
                                               const glm::vec3 & offsetY,
                                               const int numJointX,
                                               const int numJointY,
-                                              const float massPerParticle)
+                                              const float massPerParticle,
+											  const bool firstCorner = false,
+											  const bool secondCorner = false,
+											  const bool thirdCorner = false,
+											  const bool fourthCorner = false)
     {
 		const float stiffness = 0.2f;
 		const float stiffness2 = 0.1f;
@@ -204,10 +209,16 @@ struct Cloth
         std::vector<glm::vec2> & distanceParams = result->distanceParams;
         std::vector<glm::int4> & bendings = result->bendings;
 		std::vector<glm::int3> & faces = result->faces;
+		std::vector<int> & immovables = result->immovables;
 
         float lengthX = length(offsetX);
         float lengthY = length(offsetY);
         float lengthDiag = length(offsetX + offsetY);
+
+		if (firstCorner) { immovables.push_back(0); }
+		if (secondCorner) { immovables.push_back(numJointX - 1); }
+		if (thirdCorner) { immovables.push_back(numJointX * (numJointY - 1)); }
+		if (fourthCorner) { immovables.push_back(numJointX * numJointY - 1); }
 
         // init positions
         for (int x = 0; x < numJointX; x++)
@@ -413,5 +424,7 @@ struct Scene
 	size_t numMaxBendings = 0;
 	size_t numWindFaces = 0;
 	size_t numMaxWindFaces = 0;
+	size_t numImmovables = 0;
+	size_t numMaxImmovables = 0;
 	float radius;
 };

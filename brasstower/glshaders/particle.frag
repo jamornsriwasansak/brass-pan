@@ -45,7 +45,7 @@ float visibility()
 	for (int i = 0;i < 4;i++)
 	{
 		vec2 offset = poissonDisk[i] / 500.0f;
-		shadowColor += (10.f - texture(uShadowMap, vShadowCoord.xy + offset).r) > vShadowCoord.z - bias ? 0.25f : 0.0f;
+		shadowColor += (10000.f - texture(uShadowMap, vShadowCoord.xy + offset).r) > vShadowCoord.z - bias ? 0.25f : 0.0f;
 	}
 	return shadowColor;
 }

@@ -13,6 +13,7 @@
 #include "kernel/distance.cuh"
 #include "kernel/bending.cuh"
 #include "kernel/wind.cuh"
+#include "kernel/immovable.cuh"
 
 // SOLVER //
 
@@ -178,6 +179,9 @@ struct ParticleSolver
 		// alloc wind faces
 		checkCudaErrors(cudaMalloc(&devWindFaces, scene->numMaxWindFaces * sizeof(int3)));
 
+		// alloc immovable constraints
+		checkCudaErrors(cudaMalloc(&devImmovables, scene->numMaxImmovables * sizeof(int)));
+
 		// start initing the scene
 		for (std::shared_ptr<RigidBody> rigidBody : scene->rigidBodies)
 		{
@@ -206,7 +210,7 @@ struct ParticleSolver
 		for (std::shared_ptr<Cloth> cloth : scene->clothes)
 		{
 			addNewGroup(scene->numParticles, cloth->positions.size());
-			addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->bendings, cloth->faces, cloth->massPerParticle);
+			addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->bendings, cloth->faces, cloth->immovables, cloth->massPerParticle);
 		}
 
 		fluidRestDensity = scene->fluidRestDensity;
@@ -255,7 +259,7 @@ struct ParticleSolver
 		return result;
 	}
 
-	void setParticle(const int particleIndex, const glm::vec3 & position, const glm::vec3 & velocity)
+	void setParticle(float3 * devPositions, const int particleIndex, const glm::vec3 & position, const glm::vec3 & velocity)
 	{
 		if (particleIndex < 0 || particleIndex >= scene->numParticles) return;
 		setDevArr_float3<<<1, 1>>>(devPositions + particleIndex, make_float3(position.x, position.y, position.z), 1);
@@ -448,6 +452,7 @@ struct ParticleSolver
 				  const std::vector<glm::vec2> & distanceParams,
 				  const std::vector<glm::int4> & bendings,
 				  const std::vector<glm::int3> & faces,
+				  const std::vector<int> & immovables,
 				  const float massPerParticle,
 				  const bool doSelfCollide = true)
     {
@@ -476,6 +481,13 @@ struct ParticleSolver
 		if (scene->numWindFaces + numFaces >= scene->numMaxWindFaces)
 		{
             std::string message = std::string(__FILE__) + std::string("num faces exceed num max faces");
+            throw std::exception(message.c_str());
+		}
+
+		int numImmovables = immovables.size();
+		if (scene->numImmovables + numImmovables >= scene->numMaxImmovables)
+		{
+            std::string message = std::string(__FILE__) + std::string("num immovables exceed num max immovables");
             throw std::exception(message.c_str());
 		}
 
@@ -546,7 +558,22 @@ struct ParticleSolver
 																  make_int3(scene->numParticles),
 																  numFaces);
 
-		//scene->numTinFoilFaces += numFaces;
+
+		// add immovable constraints
+		if (numImmovables > 0)
+		{
+			int numImmovableBlocks, numImmovableThreads;
+			GetNumBlocksNumThreads(&numImmovableBlocks, &numImmovableThreads, numImmovables);
+			checkCudaErrors(cudaMemcpy(devImmovables + scene->numImmovables,
+									   &(immovables[0]),
+									   numImmovables * sizeof(int),
+									   cudaMemcpyHostToDevice));
+			accDevArr_int<<<numImmovableBlocks, numImmovableThreads>>>(devImmovables + scene->numImmovables,
+																	   scene->numParticles,
+																	   numImmovables);
+		}
+
+		scene->numImmovables += numImmovables;
 		scene->numBendings += numBendings;
 		scene->numParticles += numParticles;
 		scene->numDistancePairs += numDistanceConstraints;
@@ -634,7 +661,7 @@ struct ParticleSolver
 			if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
 			{
                 int pickedNewParticleId = queryNewParticleId(pickedOriginalParticleId);
-				setParticle(pickedNewParticleId, pickedParticlePosition, glm::vec3(0.0f));
+				setParticle(devPositions, pickedNewParticleId, pickedParticlePosition, glm::vec3(0.0f));
 			}
 
 			predictPositions<<<numBlocks, numThreads>>>(devNewPositions,
@@ -703,6 +730,13 @@ struct ParticleSolver
 			// (update grid every n iterations)
 			for (int j = 0; j < 8;j++)
 			{
+				// we need to make picked particle immovable
+				if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
+				{
+					int pickedNewParticleId = queryNewParticleId(pickedOriginalParticleId);
+					setParticle(devNewPositions, pickedNewParticleId, pickedParticlePosition, glm::vec3(0.0f));
+				}
+
 				// solving all plane collisions
 				for (const Plane & plane : scene->planes)
 				{
@@ -772,7 +806,7 @@ struct ParticleSolver
 				if (scene->numDistancePairs > 0)
 				{ 
 					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
-					int numDistanceBlocks, int numDistanceThreads;
+					int numDistanceBlocks, numDistanceThreads;
 					GetNumBlocksNumThreads(&numDistanceBlocks, &numDistanceThreads, scene->numDistancePairs);
 					distanceConstraints<<<numDistanceBlocks, numDistanceThreads>>>(devDeltaX,
 																				   devNewPositions,
@@ -791,7 +825,7 @@ struct ParticleSolver
 				if (scene->numBendings > 0)
 				{
 					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
-					int numBendingBlocks, int numBendingThreads;
+					int numBendingBlocks, numBendingThreads;
 					GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, scene->numBendings);
 					bendingConstraints<<<numBendingBlocks, numBendingThreads>>>(devDeltaX,
 																				devNewPositions,
@@ -811,6 +845,18 @@ struct ParticleSolver
 																									  devMapToNewIds,
 																									  devRigidBodyInitialPositions,
 																									  devRigidBodyParticleIdRange);
+				}
+
+				// solve immovalbe constraints
+				if (scene->numImmovables > 0)
+				{
+					int numImmovableBlocks, numImmovableThreads;
+					GetNumBlocksNumThreads(&numImmovableBlocks, &numImmovableThreads, scene->numImmovables);
+					immovableConstraints<<<numImmovableBlocks, numImmovableThreads>>>(devNewPositions,
+																					  devPositions,
+																					  devImmovables,
+																					  devMapToNewIds,
+																					  scene->numImmovables);
 				}
 			} // end projecting constraints
 
@@ -887,7 +933,7 @@ struct ParticleSolver
 		{
             int pickedNewParticleId = queryNewParticleId(pickedOriginalParticleId);
 			glm::vec3 solvedPickedParticlePosition = getParticlePosition(pickedNewParticleId);
-			setParticle(pickedNewParticleId, solvedPickedParticlePosition, pickedParticleVelocity);
+			setParticle(devPositions, pickedNewParticleId, solvedPickedParticlePosition, pickedParticleVelocity);
 		}
 	}
 
@@ -936,6 +982,8 @@ struct ParticleSolver
 	int4 *		devBendings;
 
 	int3 *		devWindFaces;
+
+	int *		devImmovables;
 
 	void *		devTempStorage = nullptr;
 	size_t		devTempStorageSize = 0;

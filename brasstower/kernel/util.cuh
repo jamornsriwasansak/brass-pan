@@ -246,6 +246,17 @@ accDevArr_float3(float3 * __restrict__ devArr,
 	devArr[i] += delta[i];
 }
 
+
+__inline__ __global__ void
+accDevArr_int(int * __restrict__ devArr,
+			  const int delta,
+			  const int numValues)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numValues) { return; }
+	devArr[i] += delta;
+}
+
 __inline__ __global__ void
 accDevArr_int2(int2 * __restrict__ devArr,
 			   const int2 delta,
@@ -255,7 +266,6 @@ accDevArr_int2(int2 * __restrict__ devArr,
 	if (i >= numValues) { return; }
 	devArr[i] += delta;
 }
-
 
 __inline__ __global__ void
 accDevArr_int3(int3 * __restrict__ devArr,

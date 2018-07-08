@@ -234,10 +234,11 @@ std::shared_ptr<Scene> initRopesScene()
 	scene->numMaxDistancePairs = 50000;
 	scene->numMaxBendings = 1000;
 	scene->numMaxWindFaces = 10000;
+	scene->numMaxImmovables = 10;
 	scene->radius = 0.05f;
 
-	scene->pointLight.intensity = glm::vec3(100.0f);
-	scene->pointLight.position = glm::vec3(1, 40, 1);
+	scene->pointLight.intensity = glm::vec3(5.0f);
+	scene->pointLight.position = glm::vec3(1, 5, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
 	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight);
@@ -276,7 +277,7 @@ int main()
 	cudaGLSetGLDevice(0);
 	window = InitGL(windowWidth, windowHeight);
 
-	scene = initSimpleScene();
+	scene = initRopesScene();
 	renderer = new ParticleRenderer(glm::uvec2(windowWidth, windowHeight), scene);
 	solver = new ParticleSolver(scene);
 
