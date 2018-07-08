@@ -537,8 +537,6 @@ struct ParticleSolver
 								   numDistanceConstraints * sizeof(float) * 2,
 								   cudaMemcpyHostToDevice));
 
-		std::cout << "after4" << std::endl;
-		checkCudaLastErrors();
 		if (numBendings > 0)
 		{ 
 			int numBendingBlocks, numBendingThreads;
@@ -548,8 +546,6 @@ struct ParticleSolver
 									   &(bendings[0].x),
 									   numBendings * sizeof(int4),
 									   cudaMemcpyHostToDevice));
-			std::cout << "after5" << std::endl;
-			checkCudaLastErrors();
 			accDevArr_int4<<<numBendingBlocks, numBendingThreads>>>(devBendings + scene->numBendings,
 																	make_int4(scene->numParticles),
 																	numBendings);
