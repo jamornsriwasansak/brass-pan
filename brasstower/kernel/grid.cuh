@@ -138,11 +138,13 @@ reorderParticlesData(float3 * __restrict__ sortedNewPositions,
 					 float * __restrict__ sortedMasses,
 					 int * __restrict__ sortedPhases,
 					 int * __restrict__ sortedOriginalIds,
+					 int * __restrict__ sortedGroupIds,
 					 const float3 * __restrict__ newPositions,
 					 const float3 * __restrict__ positions,
 					 const float3 * __restrict__ velocities,
 					 const float * __restrict__ masses,
 					 const int * __restrict__ phases,
+					 const int * __restrict__ groupIds,
 					 const int * __restrict__ originalIds,
 					 const int * __restrict__ indices,
 					 const int numParticles)
@@ -158,4 +160,5 @@ reorderParticlesData(float3 * __restrict__ sortedNewPositions,
 	sortedMasses[i] = masses[oldIndex];
 	sortedPhases[i] = phases[oldIndex];
 	sortedOriginalIds[i] = originalIds[oldIndex];
+	sortedGroupIds[i] = groupIds[oldIndex];
 }

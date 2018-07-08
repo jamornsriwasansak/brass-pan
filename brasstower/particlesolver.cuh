@@ -127,6 +127,10 @@ struct ParticleSolver
 		checkCudaErrors(cudaMalloc(&devTempFloat3, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devInvScaledMasses, scene->numMaxParticles * sizeof(float)));
 
+		// alloc group id
+		checkCudaErrors(cudaMalloc(&devGroupIds, scene->numMaxParticles * sizeof(int)));
+		checkCudaErrors(cudaMalloc(&devSortedGroupIds, scene->numMaxParticles * sizeof(int)));
+
 		// set velocity
 		checkCudaErrors(cudaMemset(devVelocities, 0, scene->numMaxParticles * sizeof(float3)));
 
@@ -176,21 +180,43 @@ struct ParticleSolver
 
 		// start initing the scene
 		for (std::shared_ptr<RigidBody> rigidBody : scene->rigidBodies)
+		{
+			addNewGroup(scene->numParticles, rigidBody->positions.size());
 			addRigidBody(rigidBody->positions, rigidBody->positions_CM_Origin, rigidBody->massPerParticle);
+		}
 
 		for (std::shared_ptr<Granulars> granulars : scene->granulars)
+		{
+			addNewGroup(scene->numParticles, granulars->positions.size());
 			addGranulars(granulars->positions, granulars->massPerParticle);
+		}
 
 		for (std::shared_ptr<Fluid> fluids : scene->fluids)
+		{
+			addNewGroup(scene->numParticles, fluids->positions.size());
 			addFluids(fluids->positions, fluids->massPerParticle);
+		}
 
 		for (std::shared_ptr<Rope> ropes : scene->ropes)
+		{
+			addNewGroup(scene->numParticles, ropes->positions.size());
 			addNoodles(ropes->positions, ropes->distancePairs, ropes->distanceParams, ropes->massPerParticle);
+		}
 
-        for (std::shared_ptr<Cloth> cloth : scene->clothes)
-            addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->bendings, cloth->faces, cloth->massPerParticle);
+		for (std::shared_ptr<Cloth> cloth : scene->clothes)
+		{
+			addNewGroup(scene->numParticles, cloth->positions.size());
+			addCloth(cloth->positions, cloth->distancePairs, cloth->distanceParams, cloth->bendings, cloth->faces, cloth->massPerParticle);
+		}
 
 		fluidRestDensity = scene->fluidRestDensity;
+	}
+
+	void addNewGroup(int start, int numParticles)
+	{
+		int numBlocks, numThreads;
+		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
+		setDevArr_int<<<numBlocks, numThreads>>>(devGroupIds, groupIdCounter++, numParticles);
 	}
 
     int queryOriginalParticleId(int newParticleId)
@@ -562,11 +588,13 @@ struct ParticleSolver
 														devSortedMasses,
 														devSortedPhases,
 														devSortedMapToOriginalIds,
+														devSortedGroupIds,
 														devNewPositions,
 														devPositions,
 														devVelocities,
 														devMasses,
 														devPhases,
+														devGroupIds,
 														devMapToOriginalIds,
 														devSortedParticleId,
 														scene->numParticles);
@@ -576,6 +604,7 @@ struct ParticleSolver
 		std::swap(devSortedVelocities, devVelocities);
 		std::swap(devSortedMasses, devMasses);
 		std::swap(devSortedPhases, devPhases);
+		std::swap(devSortedGroupIds, devGroupIds);
 		std::swap(devSortedMapToOriginalIds, devMapToOriginalIds);
 	}
 
@@ -907,6 +936,12 @@ struct ParticleSolver
 
 	void *		devTempStorage = nullptr;
 	size_t		devTempStorageSize = 0;
+
+	// for rendering particles
+	// can use group id to identify different group of object
+	int *			devGroupIds;
+	int *			devSortedGroupIds; 
+	int				groupIdCounter = 0;
 
 	int *			devCellId;
 	int *			devParticleId;

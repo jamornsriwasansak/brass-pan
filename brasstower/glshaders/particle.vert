@@ -22,10 +22,10 @@ layout (std430, binding=0) buffer ParticlePositions
 };
 
 const vec3 ParticleDefaultColors[4] = vec3[](
-	vec3(1.0, 0.0, 0.0),
-	vec3(0.0, 1.0, 0.0),
-	vec3(0.0, 0.0, 1.0),
-	vec3(1.0, 0.0, 1.0)
+	vec3(68.0, 132.0, 206.0) / 256.0,
+	vec3(217.0, 217.0, 217.0) / 256.0,
+	vec3(249.0, 207.0, 0.0) / 256.0,
+	vec3(241.0, 159.0, 77.0) / 256.0
 );
 
 void main()
