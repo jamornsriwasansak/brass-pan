@@ -35,16 +35,19 @@ vec3 shadeSpotlight(vec3 position)
 	return min(cos1 * spotlightScale / dist2, 0.01f) * 10.f * uLightIntensity;
 }
 
+const vec3 baseColor[2] = vec3[](
+	vec3(86.0f / 256.0f, 86.0f / 256.0f, 86.0f / 256.0f),
+	vec3(86.0f / 256.0f, 86.0f / 256.0f, 86.0f / 256.0f) * 1.2f
+);
+
 void main()
 {
-	vec3 baseColor = vec3(86.0f / 256.0f, 86.0f / 256.0f, 86.0f / 256.0f);
-
 	// discretize position
 	ivec4 discretized = ivec4(ceil(vPosition));
-	// grid code if code = (1, 1, 1) means that it's odd block else it's even block
-	float code = (discretized.x + discretized.y + discretized.z) % 2;
+	// grid code
+	int code = (discretized.x + discretized.y + discretized.z) % 2;
 	// map code to diff reflectance
-	vec3 diffuseReflectance = baseColor * (code + 20.f) / 6.0f;
+	vec3 diffuseReflectance = baseColor[code];
 
 	vec3 projShadowCoord = vShadowCoord.xyz / vShadowCoord.w * 0.5f + 0.5f;
 	float shadowColor = 0.0f;
@@ -55,5 +58,8 @@ void main()
 	}
 	shadowColor *= 0.25f;
 
-	color = vec4(diffuseReflectance * 0.8f * shadeSpotlight(vec3(vPosition)) * vec3(1.0f - shadowColor) + diffuseReflectance * 0.1f, 1.0f);
+	vec3 diffuse = diffuseReflectance * shadeSpotlight(vec3(vPosition)) * vec3(1.0f - shadowColor);
+	vec3 ambient = diffuseReflectance * 0.05f;
+	color = vec4(diffuse + ambient, 1.0f);
+	color = pow(color, vec4(1.0/2.2));
 }

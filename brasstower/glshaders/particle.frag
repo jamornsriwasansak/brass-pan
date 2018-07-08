@@ -43,6 +43,7 @@ void main()
 	if (h2 * (1.0 - cosTheta2) >= uRadius * uRadius) discard;
 
 	vec3 diffuse = shadeSpotlight(vPosition, normalize(vNormal)) * vColor;
-	vec3 ambient = vColor * 0.1f;
+	vec3 ambient = vColor * 0.01f;
 	color = vec4(diffuse + ambient, 1.0f);
+	color = pow(color, vec4(1.0/2.2));
 }

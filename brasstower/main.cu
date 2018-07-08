@@ -96,6 +96,8 @@ void updateControl()
 			control += glm::vec3(0.f, 1.f, 0.f);
 		if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
 			control -= glm::vec3(0.f, 1.f, 0.f);
+		if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+			renderer->reloadShaders();
 		float length = glm::length(control);
 		control = length > 0 ? control / length : control;
 		scene->camera.shift(control * 0.1f);
@@ -234,8 +236,8 @@ std::shared_ptr<Scene> initRopesScene()
 	scene->numMaxWindFaces = 10000;
 	scene->radius = 0.05f;
 
-	scene->pointLight.intensity = glm::vec3(200.0f);
-	scene->pointLight.position = glm::vec3(1, 50, 1);
+	scene->pointLight.intensity = glm::vec3(100.0f);
+	scene->pointLight.position = glm::vec3(1, 40, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
 	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight);
@@ -274,7 +276,7 @@ int main()
 	cudaGLSetGLDevice(0);
 	window = InitGL(windowWidth, windowHeight);
 
-	scene = initRopesScene();
+	scene = initSimpleScene();
 	renderer = new ParticleRenderer(glm::uvec2(windowWidth, windowHeight), scene);
 	solver = new ParticleSolver(scene);
 
