@@ -153,7 +153,7 @@ struct ParticleSolver
 
 		// alloc and set phase counter
 		checkCudaErrors(cudaMalloc(&devSolidPhaseCounter, sizeof(int)));
-		checkCudaErrors(cudaMemset(devSolidPhaseCounter, 1, sizeof(int)));
+		setDevArr_int<<<1, 1>>>(devSolidPhaseCounter, 1, 1);
 
 		// alloc grid accel
 		checkCudaErrors(cudaMalloc(&devCellId, scene->numMaxParticles * sizeof(int)));
