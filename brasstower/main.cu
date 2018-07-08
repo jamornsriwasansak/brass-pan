@@ -189,10 +189,10 @@ std::shared_ptr<Scene> initFluidScene()
 	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
 	scene->radius = 0.05f;
 
-	const unsigned int width = 15;
-	const unsigned int depth = 15;
-	const unsigned int height = 62;
-	const float containerWidth = (width + 1) * scene->radius * 2.0 * 3.0;
+	const unsigned int width = 20;
+	const unsigned int depth = 20;
+	const unsigned int height = 82;
+	const float containerWidth = (width + 1) * scene->radius * 2.0 * 2.5;
 	const float containerDepth = (depth + 1) * scene->radius * 2.0 * 1.5;
 	const float containerHeight = 4.0;
 	const float diam = 2.0 * scene->radius;
@@ -211,14 +211,14 @@ std::shared_ptr<Scene> initFluidScene()
 	scene->numMaxRigidBodies = 128;
 
 	scene->pointLight.intensity = glm::vec3(5.0f);
-	scene->pointLight.position = glm::vec3(1, 5, 1);
+	scene->pointLight.position = glm::vec3(1, 10, 1);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
 	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight);
 
 	// mass per particle unimplemented
-	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height / 2, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 0.75f));
-	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height / 2, depth), glm::vec3(startX, startY + 5, startZ), glm::vec3(diam), 1.0f));
+	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 0.75f));
+	//scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height / 2, depth), glm::vec3(startX, startY + 5, startZ), glm::vec3(diam), 1.0f));
 	scene->fluidRestDensity = 1200.0f;
 
 	//scene->rigidBodies.push_back(RigidBody::CreateRigidBox(OxbloodColor, glm::ivec3(3, 4, 2), glm::vec3(0 + 2, scene->radius + 2, 0), glm::vec3(scene->radius * 2.0f), 2.0f));
@@ -277,7 +277,7 @@ int main()
 	cudaGLSetGLDevice(0);
 	window = InitGL(windowWidth, windowHeight);
 
-	scene = initRopesScene();
+	scene = initFluidScene();
 	renderer = new ParticleRenderer(glm::uvec2(windowWidth, windowHeight), scene);
 	solver = new ParticleSolver(scene);
 

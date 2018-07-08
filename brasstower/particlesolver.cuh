@@ -728,7 +728,7 @@ struct ParticleSolver
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
-			for (int j = 0; j < 8;j++)
+			for (int j = 0; j < 2;j++)
 			{
 				// we need to make picked particle immovable
 				if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
