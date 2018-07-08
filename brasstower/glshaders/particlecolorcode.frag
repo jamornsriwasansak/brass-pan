@@ -10,13 +10,8 @@ in flat int vInstanceId;
 uniform vec3 uCameraPosition;
 uniform float uRadius;
 
-const vec3 pointLightPosition = vec3(1, 0, 0);
-
 void main()
 {
-	vec3 diff = pointLightPosition - vPosition;
-	float dist2 = dot(diff, diff);
-
 	// ray - sphere intersection test
 	vec3 cameraToCentroid = vParticleCentroid - uCameraPosition;
 	float h2 = dot(cameraToCentroid, cameraToCentroid);
