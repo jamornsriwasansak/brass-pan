@@ -44,7 +44,7 @@ particleParticleCollisionConstraint(float3 * deltaX,
 						const float3 xjPrev = newPositionsPrev[j];
 						const float3 diff = xiPrev - xjPrev;
 						float dist2 = length2(diff);
-						if (dist2 < radius * radius * 4.0f)
+						if (dist2 < radius * radius * 4.0f && dist2 > 1e-5f)
 						{
 							float dist = sqrtf(dist2);
 							float invMass2 = invMasses[j];
