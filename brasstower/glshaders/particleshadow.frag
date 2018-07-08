@@ -6,5 +6,5 @@ in vec3 vPosition;
 
 void main()
 {
-	depth = vPosition.z;
+	depth = 10.0f - vPosition.z;
 }

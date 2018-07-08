@@ -6,8 +6,10 @@ out vec3 vPosition;
 out vec3 vNormal;
 out vec3 vColor;
 out vec3 vParticleCentroid;
+out vec4 vShadowCoord;
 
 uniform mat4 uMVP;
+uniform mat4 uShadowMatrix;
 uniform float uRadius;
 
 struct ParticleRenderInfo
@@ -34,5 +36,7 @@ void main()
 	vPosition = vertexPos * uRadius + vParticleCentroid;
 	vNormal = vertexPos;
 	vColor = ParticleDefaultColors[(particles[gl_InstanceID].phase + 4) % 4];
+	vShadowCoord = uShadowMatrix * vec4(vPosition, 1.0);
+	vShadowCoord = vShadowCoord / vShadowCoord.w * 0.5f + 0.5f;
 	gl_Position = uMVP * vec4(vPosition, 1.0);
 }

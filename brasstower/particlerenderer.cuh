@@ -97,12 +97,14 @@ struct ParticleRenderer
 
 	std::shared_ptr<OpenglProgram> particlesDrawingProgram;
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uMVPMatrix;
+	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uShadowMatrix;
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uRadius;
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uCameraPosition;
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uLightPosition; 
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uLightDir;
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uLightIntensity;
 	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uLightThetaMinMax;
+	std::shared_ptr<OpenglUniform> particlesDrawingProgram_uShadowMap;
 	GLuint particlesDrawingProgram_ssboBinding;
 	void initParticleDrawingProgram()
 	{
@@ -112,12 +114,14 @@ struct ParticleRenderer
 		particlesDrawingProgram->compile();
 
 		particlesDrawingProgram_uMVPMatrix = particlesDrawingProgram->registerUniform("uMVP");
+		particlesDrawingProgram_uShadowMatrix = particlesDrawingProgram->registerUniform("uShadowMatrix");
 		particlesDrawingProgram_uRadius = particlesDrawingProgram->registerUniform("uRadius");
 		particlesDrawingProgram_uCameraPosition = particlesDrawingProgram->registerUniform("uCameraPosition");
 		particlesDrawingProgram_uLightPosition = particlesDrawingProgram->registerUniform("uLightPosition");
 		particlesDrawingProgram_uLightDir = particlesDrawingProgram->registerUniform("uLightDir");
 		particlesDrawingProgram_uLightIntensity = particlesDrawingProgram->registerUniform("uLightIntensity");
 		particlesDrawingProgram_uLightThetaMinMax = particlesDrawingProgram->registerUniform("uLightThetaMinMax");
+		particlesDrawingProgram_uShadowMap = particlesDrawingProgram->registerUniform("uShadowMap");
 		GLuint index = glGetProgramResourceIndex(particlesDrawingProgram->mHandle, GL_SHADER_STORAGE_BLOCK, "ParticlePositions");
 		particlesDrawingProgram_ssboBinding = 0;
 		glShaderStorageBlockBinding(particlesDrawingProgram->mHandle, index, particlesDrawingProgram_ssboBinding);
@@ -391,8 +395,14 @@ struct ParticleRenderer
 			particlesDrawingProgram_uLightThetaMinMax->setVec2(scene->pointLight.thetaMinMax);
 
 			particlesDrawingProgram_uMVPMatrix->setMat4(cameraVpMatrix);
+			particlesDrawingProgram_uShadowMatrix->setMat4(shadowMatrix);
 			particlesDrawingProgram_uRadius->setFloat(scene->radius);
 			particlesDrawingProgram_uCameraPosition->setVec3(scene->camera.pos);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, shadowDepthTextureHandle);
+			particlesDrawingProgram_uShadowMap->setInt(0);
+
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, particlePositionsSsboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
 			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);

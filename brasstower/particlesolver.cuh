@@ -701,7 +701,7 @@ struct ParticleSolver
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
-			for (int j = 0; j < 10; j++)
+			for (int j = 0; j < 8;j++)
 			{
 				// solving all plane collisions
 				for (const Plane & plane : scene->planes)
