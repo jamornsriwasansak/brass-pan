@@ -680,21 +680,24 @@ struct ParticleSolver
 			#endif
 
 			// apply Wind Force
-			int numWindFaceBlocks, numWindFaceThreads;
-			GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, scene->numWindFaces);
-			setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
-			applyWindForce<<<numWindFaceBlocks, numWindFaceThreads>>>(devDeltaX,
-																	  devNewPositions,
-																	  devVelocities,
-																	  devMasses,
-																	  devMapToNewIds,
-																	  devWindFaces,
-																	  scene->numWindFaces,
-																	  subDeltaTime);
-			accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-			#ifdef CHECK_NAN
-				printIfNan(devNewPositions, scene->numParticles, "find nan after wind force applied");
-			#endif
+			if (scene->numWindFaces > 0)
+			{
+				int numWindFaceBlocks, numWindFaceThreads;
+				GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, scene->numWindFaces);
+				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+				applyWindForce<<<numWindFaceBlocks, numWindFaceThreads>>>(devDeltaX,
+																		  devNewPositions,
+																		  devVelocities,
+																		  devMasses,
+																		  devMapToNewIds,
+																		  devWindFaces,
+																		  scene->numWindFaces,
+																		  subDeltaTime);
+				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+				#ifdef CHECK_NAN
+					printIfNan(devNewPositions, scene->numParticles, "find nan after wind force applied");
+				#endif
+			}
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
