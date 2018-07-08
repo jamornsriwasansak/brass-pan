@@ -629,6 +629,10 @@ struct ParticleSolver
 															  devPositions,
 															  MASS_SCALING_CONSTANT,
 															  scene->numParticles);
+			#ifdef CHECK_NAN
+				printIfNan(devInvScaledMasses, scene->numParticles, "find nan after InvScaledMasses");
+			#endif
+
 			// stabilize iterations
 			for (int i = 0; i < 2; i++)
 			{
@@ -642,8 +646,10 @@ struct ParticleSolver
 															  scene->radius);
 				}
 			}
+			#ifdef CHECK_NAN
+				printIfNan(devNewPositions, scene->numParticles, "fina nan after plane stabilize collision");
+			#endif
 
-			/*
 			// apply Wind Force
 			int numWindFaceBlocks, numWindFaceThreads;
 			GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, scene->numWindFaces);
@@ -657,7 +663,9 @@ struct ParticleSolver
 																	  scene->numWindFaces,
 																	  subDeltaTime);
 			accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-			*/
+			#ifdef CHECK_NAN
+				printIfNan(devNewPositions, scene->numParticles, "find nan after wind force applied");
+			#endif
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
@@ -673,7 +681,9 @@ struct ParticleSolver
 																				make_float3(plane.normal),
 																				scene->radius);
 				}
-				printIfNan(devNewPositions, scene->numParticles, "after particle plane collision");
+				#ifdef CHECK_NAN
+					printIfNan(devNewPositions, scene->numParticles, "find nan after particle plane collision");
+				#endif
 
 				// solving all particles collisions
 				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
@@ -687,7 +697,9 @@ struct ParticleSolver
 																			   scene->numParticles,
 																			   scene->radius);
 				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-				printIfNan(devNewPositions, scene->numParticles, "after particle particle collision");
+				#ifdef CHECK_NAN
+					printIfNan(devNewPositions, scene->numParticles, "find nan after particle particle collision");
+				#endif
 
 				// fluid
 				fluidLambda<<<numBlocks, numThreads>>>(devFluidLambdas,
@@ -702,7 +714,9 @@ struct ParticleSolver
 													   devCellEnd,
 													   scene->numParticles,
 													   useAkinciCohesionTension);
-				printIfNan(devNewPositions, scene->numParticles, "after fluid lambda");
+				#ifdef CHECK_NAN
+					printIfNan(devNewPositions, scene->numParticles, "find nan after fluid lambda");
+				#endif
 
 				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
 				fluidPosition<<<numBlocks, numThreads>>>(devDeltaX,
@@ -718,7 +732,9 @@ struct ParticleSolver
 														 scene->numParticles,
 														 useAkinciCohesionTension);
 				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-				printIfNan(devNewPositions, scene->numParticles, "after fluid position");
+				#ifdef CHECK_NAN
+					printIfNan(devNewPositions, scene->numParticles, "find nan after fluid position");
+				#endif
 
 				// solve all distance constraints
 				if (scene->numDistancePairs > 0)
@@ -734,7 +750,9 @@ struct ParticleSolver
 																				   devMapToNewIds,
 																				   scene->numDistancePairs);
 					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
-					printIfNan(devNewPositions, scene->numParticles, "after distance");
+					#ifdef CHECK_NAN
+						printIfNan(devNewPositions, scene->numParticles, "find nan after distance constraint");
+					#endif
 				}
 
 				// solve all bending constraints

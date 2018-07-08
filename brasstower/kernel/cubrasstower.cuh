@@ -12,6 +12,8 @@
 
 #include "scene.h"
 
+//#define CHECK_NAN
+
 #define NUM_MAX_PARTICLE_PER_CELL 15
 #define FRICTION_STATIC 0.0f
 #define FRICTION_DYNAMICS 0.0f

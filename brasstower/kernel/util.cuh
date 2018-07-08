@@ -76,6 +76,20 @@ void printPair(T * dev, int size)
 	free(tmp);
 }
 
+
+template <typename T>
+__inline__ __global__ void
+printIfNanKernel(int * p, T * dev, int size)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= size) { return; }
+	if (!isfinite(dev[i]))
+	{
+		atomicAdd(p, 1);
+	}
+}
+
+template <>
 __inline__ __global__ void
 printIfNanKernel(int * p, float3 * dev, int size)
 {
@@ -87,6 +101,31 @@ printIfNanKernel(int * p, float3 * dev, int size)
 	}
 }
 
+template <typename T>
+void printIfNan(T * dev, int size, const char * message)
+{
+	int numBlocks, numThreads;
+
+	int * devTmp;
+	cudaMalloc(&devTmp, sizeof(int));
+	cudaMemset(devTmp, 0, sizeof(int));
+
+	GetNumBlocksNumThreads(&numBlocks, &numThreads, size);
+	printIfNanKernel<<<numBlocks, numThreads>>>(devTmp, dev, size);
+	cudaDeviceSynchronize();
+
+	int out;
+	cudaMemcpy(&out, devTmp, sizeof(int), cudaMemcpyDeviceToHost);
+
+	if (out > 0)
+	{
+		std::cout << message << std::endl;
+	}
+	
+	cudaFree(devTmp);
+}
+
+template <>
 void printIfNan(float3 * dev, int size, const char * message)
 {
 	int numBlocks, numThreads;
