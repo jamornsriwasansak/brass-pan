@@ -196,7 +196,7 @@ fluidPosition(float3 * __restrict__ deltaXs,
 				int neighbourEnd = cellEnd[gridAddress];
 				for (int j = neighbourStart; j < neighbourEnd; j++)
 				{
-					if (i < j && phases[j] < 0)
+					if (i < j)
 					{
 						const float3 pj = newPositionsPrev[j];
 						const float3 diff = pi - pj;

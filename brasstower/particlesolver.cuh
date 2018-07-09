@@ -195,6 +195,7 @@ struct ParticleSolver
 			addGranulars(granulars->positions, granulars->massPerParticle);
 		}
 
+		///TODO:: find out why adding fluid before rigid leads to broken sim
 		for (std::shared_ptr<Fluid> fluids : scene->fluids)
 		{
 			addNewGroup(scene->numParticles, fluids->positions.size());
@@ -778,7 +779,7 @@ struct ParticleSolver
 													   devMasses,
 													   devPhases,
 													   fluidRestDensity,
-													   1.0f, // solid density scaling
+													   2.0f, // solid density scaling
 													   300.0f, // relaxation parameter
 													   devCellStart,
 													   devCellEnd,
@@ -910,11 +911,11 @@ struct ParticleSolver
 															  devFluidDensities,
 															  fluidRestDensity,
 															  devPhases,
-															  0.1, // tension strength
+															  0.5, // tension strength
 															  devCellStart,
 															  devCellEnd,
 															  scene->numParticles,
-															  deltaTime);
+															  subDeltaTime);
 				std::swap(devVelocities, devTempFloat3);
 			}
 

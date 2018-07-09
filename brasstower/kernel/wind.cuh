@@ -45,7 +45,7 @@ applyWindForce(float3 * deltaX,
 	float3 force = dragForce + liftForce;
 	float3 move = force * deltaTime * deltaTime;
 
-	atomicAdd(deltaX, id1, move);
-	atomicAdd(deltaX, id2, move);
-	atomicAdd(deltaX, id3, move);
+	atomicAdd(deltaX, id1, move / masses[id1]);
+	atomicAdd(deltaX, id2, move / masses[id2]);
+	atomicAdd(deltaX, id3, move / masses[id3]);
 }
