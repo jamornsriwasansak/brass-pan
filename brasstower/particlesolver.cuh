@@ -904,6 +904,7 @@ struct ParticleSolver
 													   devCellEnd,
 													   scene->numParticles);
 
+				/// TODO:: if fluid particle stuck inside solid particle then solid particle can float!
 				fluidAkinciTension<<<numBlocks, numThreads>>>(devTempFloat3,
 															  devVelocities,
 															  devNewPositions,
