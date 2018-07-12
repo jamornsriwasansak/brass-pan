@@ -15,8 +15,13 @@
 ////////////////////////////////////////////////////////////////////////////
 
 // CUDA Runtime error messages
-#ifdef __DRIVER_TYPES_H__
-static const char *_cudaGetErrorEnum(cudaError_t error)
+#ifndef CHECK_CUDA_ERRORS
+#define CHECK_CUDA_ERRORS
+#define checkCudaErrors(val)           check ( (val), #val, __FILE__, __LINE__ )
+#define checkCudaLastErrors()          checkLastError (__FILE__, __LINE__ )
+#endif
+
+inline static const char *_cudaGetErrorEnum(cudaError_t error)
 {
 	switch (error)
 	{
@@ -273,8 +278,6 @@ static const char *_cudaGetErrorEnum(cudaError_t error)
 
 	return "<unknown>";
 }
-#endif
-
 
 template< typename T >
 void check(T result, char const *const func, const char *const file, int const line)
@@ -286,7 +289,7 @@ void check(T result, char const *const func, const char *const file, int const l
 	}
 }
 
-void checkLastError(const char *const file, int const line)
+inline void checkLastError(const char *const file, int const line)
 {
 	cudaError_t error = cudaGetLastError();
 	if (error)
@@ -294,6 +297,3 @@ void checkLastError(const char *const file, int const line)
 		fprintf(stderr, "CUDA last error at %s:%d %s\n", file, line, _cudaGetErrorEnum(error));
 	}
 }
-
-#define checkCudaErrors(val)           check ( (val), #val, __FILE__, __LINE__ )
-#define checkCudaLastErrors()          checkLastError (__FILE__, __LINE__ )

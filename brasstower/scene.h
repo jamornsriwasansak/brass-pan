@@ -1,9 +1,14 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 #include <vector>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
+
+#include "cuda/helper.cuh"
+#include "mesh.h"
 
 struct Plane
 {
@@ -395,9 +400,9 @@ struct PointLight
 	glm::vec2 thetaMinMax = glm::radians(glm::vec2(45.f, 50.0f));
 };
 
-struct Scene
+struct OldSceneFormat
 {
-	Scene()
+	OldSceneFormat()
 	{}
 
 	std::vector<Plane> planes;
@@ -427,4 +432,105 @@ struct Scene
 	size_t numImmovables = 0;
 	size_t numMaxImmovables = 0;
 	float radius;
+};
+
+struct alignas(16) DistanceConstraint
+{
+	int2					ids;
+	float					distance;
+	float					kStiff;
+
+	DistanceConstraint(const int id1,
+					   const int id2,
+					   const float distance,
+					   const float kStiff) :
+		ids(make_int2(id1, id2)),
+		distance(distance),
+		kStiff(kStiff)
+	{}
+};
+
+// prepare data in CPU side first then put it in GPU later
+// data that can't be stored inside CPU can't be fit in GPU anyway. 
+struct Scene
+{
+	Scene() {}
+
+	// all add methods return range of start positions
+	int2 addCloth(const float3 & startPosition,
+				  const float3 & stepX,
+				  const float3 & stepY,
+				  const int numJointX,
+				  const int numJointY,
+				  const float massPerParticle,
+				  const float kStiffness,
+				  const float kBending,
+				  const bool isSelfCollidable = true);
+
+	int2 addFluidBlock(const uint3 & dimension,
+					   const float3 & startPosition,
+					   const glm::vec3 & stepX,
+					   const glm::vec3 & stepY,
+					   const float massPerParticle);
+
+	int2 addGranularsBlock(const uint3 & dimension,
+						   const float3 & startPosition,
+						   const float3 & step,
+						   const float massPerParticle);
+
+	int2 addRigidBox(const glm::ivec3 & dimension,
+					 const glm::vec3 & startPosition,
+					 const glm::vec3 & stepX,
+					 const glm::vec3 & stepY,
+					 const float massPerParticle);
+
+	int2 addRope(const float3 & startPosition,
+				 const float3 & step,
+				 const int numJoint,
+				 const float massPerParticle);
+
+	/// TODO::int2 addRigidBody
+
+	/// TODO::int2 addSoftBody
+
+	void makeImmovable(const int id);
+
+	size_t numParticles() { return positions.size(); }
+
+	float								particleRadius = 0.05f;
+	float								fluidKernelRadius = 2.3 * particleRadius;
+
+	Camera								camera;
+	PointLight							pointLight;
+
+	// particle data
+	std::vector<float3>					positions;
+	std::vector<float>					masses;
+	std::vector<int>					phases;
+	std::vector<int>					groupIds;
+
+	// colliding objects
+	std::vector<Plane>					planes;
+
+	// aerodynamic faces - record all 3 ids of each triangle face
+	std::vector<int3>					faces;
+
+	// constraints
+
+	// rigidbody constraints - record all initial positions - expected center of mass at 0
+	std::vector<float3>					rigidbodyInitialPositions;
+	std::vector<int2>					rigidbodyParticleIdRanges;
+	// distance constraints
+	/// TODO:: pack distance pairs and distance params together
+	std::vector<int2>					distancePairs;
+	std::vector<float2>					distanceParams;
+	// bending constraints - record all 4 ids
+	std::vector<int4>					bendingConstraints;
+	// immovable constraints - record ids that should be immovable
+	std::vector<int>					immovableConstraints;
+
+	// phase counter for phases
+	int									groupIdCounter = 1;
+	int									solidPhaseCounter = 1;
+	int									fluidPhaseCounter = -1;
 };

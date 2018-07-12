@@ -165,6 +165,28 @@ increment(int * __restrict__ x, int value = 1)
 	atomicAdd(x, value);
 }
 
+template <typename T>
+__inline__ __global__ void
+setDevArr(T * __restrict__ devArr,
+		  const T value,
+		  const int numValues)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numValues) { return; }
+	devArr[i] = value;
+}
+
+template <typename T>
+void SetDevArr(T * __restrict__ devArr,
+			   const T value,
+			   const int numValues)
+{
+	if (numValues <= 0) return;
+	int numBlocks, numThreads;
+	GetNumBlocksNumThreads(&numBlocks, &numThreads, numValues);
+	setDevArr<<<numBlocks, numThreads>>>(devArr, value, numValues);
+}
+
 __inline__ __global__ void
 setDevArr_devIntPtr(int * __restrict__ devArr,
 					const int * __restrict__ value,
@@ -294,6 +316,15 @@ initOrder_int(int * __restrict__ devArr,
 	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
 	if (i >= numValues) { return; }
 	devArr[i] = i;
+}
+
+void InitOrder_int(int * __restrict__ devArr,
+				   const int numValues)
+{
+	if (numValues <= 0) return;
+	int numBlocks, numThreads;
+	GetNumBlocksNumThreads(&numBlocks, &numThreads, numValues);
+	initOrder_int<<<numBlocks, numThreads>>>(devArr, numValues);
 }
 
 __inline__ __global__ void

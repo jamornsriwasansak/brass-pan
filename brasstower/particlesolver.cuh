@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+#include <vector>
 #include <exception>
 #include <conio.h>
 
@@ -14,6 +16,33 @@
 #include "kernel/bending.cuh"
 #include "kernel/wind.cuh"
 #include "kernel/immovable.cuh"
+
+template <typename T>
+void CudaAlloc(T ** devPtr, size_t num)
+{
+	if (num <= 0) { return; }
+	checkCudaErrors(cudaMalloc(devPtr, num * sizeof(T)));
+}
+
+template <typename T>
+T * CudaAlloc2(const size_t num)
+{
+	if (num <= 0) { return nullptr; }
+	T * devPtr = nullptr;
+	checkCudaErrors(cudaMalloc(&devPtr, num * sizeof(T)));
+	return devPtr;
+}
+
+template <typename T>
+void CudaAllocAndCopy(T ** devPtr, const std::vector<T> & vec)
+{
+	if (vec.size() <= 0) { return; }
+	CudaAlloc(devPtr, vec.size());
+	checkCudaErrors(cudaMemcpy(*devPtr,
+							   &(vec[0]),
+							   vec.size() * sizeof(T),
+							   cudaMemcpyHostToDevice));
+}
 
 // SOLVER //
 
@@ -68,6 +97,27 @@ computeInvScaledMasses(float* __restrict__ invScaledMasses,
 	invScaledMasses[i] = 1.0f / (scale * masses[i]);
 }
 
+// for shock propagation
+__global__ void
+computeInvMassesAndInvScaledMasses(float* __restrict__ invScaledMasses,
+								   float* __restrict__ invMasses,
+								   const float* __restrict__ masses,
+								   const float3* __restrict__ positions,
+								   const float k,
+								   const int numParticles)
+{
+	int i = threadIdx.x + __mul24(blockIdx.x, blockDim.x);
+	if (i >= numParticles) { return; }
+
+	float mass = masses[i];
+	invMasses[i] = 1.0f / (mass);
+	const float e = 2.7182818284f;
+	const float height = positions[i].y;
+	///TODO:: switch to exp and test if it still gives identical result
+	const float scale = pow(e, -k * height);
+	invScaledMasses[i] = 1.0f / (scale * mass);
+}
+
 __global__ void
 updatePositions(float3 * __restrict__ positions,
 				const float3 * __restrict__ newPositions,
@@ -96,8 +146,78 @@ queryId(int id, int * mapToIds)
 struct ParticleSolver
 {
 	ParticleSolver(const std::shared_ptr<Scene> & scene):
-		scene(scene),
 		cellOrigin(make_float3(-4.01, -1.01, -5.01)),
+		cellSize(make_float3(scene->particleRadius * 2.3f)),
+		gridSize(make_int3(512))
+	{
+		solidRadius = scene->particleRadius;
+		SetKernelRadius(scene->fluidKernelRadius);
+		numParticles = scene->numParticles();
+
+		// alloc particle variables
+		CudaAlloc(&devNewPositions, numParticles);
+		CudaAlloc(&devVelocities, numParticles);
+		CudaAllocAndCopy(&devPositions, scene->positions);
+		CudaAllocAndCopy(&devMasses, scene->masses);
+		CudaAllocAndCopy(&devPhases, scene->phases);
+		CudaAllocAndCopy(&devGroupIds, scene->groupIds);
+		CudaAlloc(&devMapToOriginalIds, numParticles);
+		CudaAlloc(&devMapToNewIds, numParticles);
+
+		SetDevArr(devVelocities, make_float3(0.f), numParticles);
+		InitOrder_int(devMapToOriginalIds, numParticles);
+
+		// alloc sorted particle variables
+		CudaAlloc(&devSortedNewPositions, numParticles);
+		CudaAlloc(&devSortedNewPositions, numParticles);
+		CudaAlloc(&devSortedPositions, numParticles);
+		CudaAlloc(&devSortedVelocities, numParticles);
+		CudaAlloc(&devSortedMasses, numParticles);
+		CudaAlloc(&devSortedPhases, numParticles);
+		CudaAlloc(&devSortedMapToOriginalIds, numParticles);
+		CudaAlloc(&devSortedGroupIds, numParticles);
+
+		// alloc grid accel
+		size_t numCells = gridSize.x * gridSize.y * gridSize.z;
+		CudaAlloc(&devCellId, numParticles);
+		CudaAlloc(&devParticleId, numParticles);
+		CudaAlloc(&devSortedCellId, numParticles);
+		CudaAlloc(&devSortedParticleId, numParticles);
+		CudaAlloc(&devCellStart, numCells);
+		CudaAlloc(&devCellEnd, numCells);
+		checkCudaErrors(cudaMemcpyToSymbol(GridDim, &gridSize.x, sizeof(uint)));
+		checkCudaErrors(cudaMemcpyToSymbol(GridCellSize, &cellSize, sizeof(float3)));
+		SetDevArr(devCellStart, -1, numCells);
+		SetDevArr(devCellEnd, -1, numCells);
+
+		// intermediates variables
+		CudaAlloc(&devDeltaX, numParticles);
+		CudaAlloc(&devTempFloat3, numParticles);
+		CudaAlloc(&devInvMasses, numParticles);
+		CudaAlloc(&devInvScaledMasses, numParticles);
+
+		// rigid body
+		size_t numRigidbody = scene->rigidbodyParticleIdRanges.size();
+		CudaAllocAndCopy(&devRigidBodyParticleIdRange, scene->rigidbodyParticleIdRanges);
+		CudaAllocAndCopy(&devRigidBodyInitialPositions, scene->rigidbodyInitialPositions);
+		CudaAlloc(&devRigidBodyRotations, numRigidbody);
+		SetDevArr(devRigidBodyRotations, make_float4(0.f, 0.f, 0.f, 1.f), numRigidbody);
+
+		// distance constraints
+		size_t numDistanceConstraints = scene->distancePairs.size();
+		CudaAllocAndCopy(&devDistancePairs, scene->distancePairs);
+		CudaAllocAndCopy(&devDistanceParams, scene->distanceParams);
+
+		// bending constraints
+		size_t numBendingConstraints = scene->bendingConstraints.size();
+
+		planes = scene->planes;
+	}
+
+
+	ParticleSolver(const std::shared_ptr<OldSceneFormat> & scene):
+		oldScene(scene),
+		cellOrigin(make_float3(-1000.01, -1000.01, -1000.01)),
 		cellSize(make_float3(scene->radius * 2.3f)),
 		gridSize(make_int3(512))
 	{
@@ -106,6 +226,7 @@ struct ParticleSolver
 		fluidPhaseCounter = -1;
 
 		// alloc particle vars
+		//checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devNewPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devPositions, scene->numMaxParticles * sizeof(float3)));
 		checkCudaErrors(cudaMalloc(&devVelocities, scene->numMaxParticles * sizeof(float3)));
@@ -215,6 +336,9 @@ struct ParticleSolver
 		}
 
 		fluidRestDensity = scene->fluidRestDensity;
+
+		planes = scene->planes;
+		numParticles = scene->numParticles;
 	}
 
 	void addNewGroup(int start, int numParticles)
@@ -253,7 +377,7 @@ struct ParticleSolver
 
 	glm::vec3 getParticlePosition(const int particleIndex)
 	{
-		if (particleIndex < 0 || particleIndex >= scene->numParticles) return glm::vec3(0.0f);
+		if (particleIndex < 0 || particleIndex >= oldScene->numParticles) return glm::vec3(0.0f);
 		float3 * tmp = (float3 *)malloc(sizeof(float3));
 		cudaMemcpy(tmp, devPositions + particleIndex, sizeof(float3), cudaMemcpyDeviceToHost);
 		glm::vec3 result(tmp->x, tmp->y, tmp->z);
@@ -263,7 +387,7 @@ struct ParticleSolver
 
 	void setParticle(float3 * devPositions, const int particleIndex, const glm::vec3 & position, const glm::vec3 & velocity)
 	{
-		if (particleIndex < 0 || particleIndex >= scene->numParticles) return;
+		if (particleIndex < 0 || particleIndex >= oldScene->numParticles) return;
 		setDevArr_float3<<<1, 1>>>(devPositions + particleIndex, make_float3(position.x, position.y, position.z), 1);
 		setDevArr_float3<<<1, 1>>>(devVelocities + particleIndex, make_float3(velocity.x, velocity.y, velocity.z), 1);
 	}
@@ -271,7 +395,7 @@ struct ParticleSolver
 	void addGranulars(const std::vector<glm::vec3> & positions, const float massPerParticle)
 	{
 		int numParticles = positions.size();
-		if (scene->numParticles + numParticles >= scene->numMaxParticles)
+		if (oldScene->numParticles + numParticles >= oldScene->numMaxParticles)
 		{
 			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
 			throw std::exception(message.c_str());
@@ -281,32 +405,32 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
 		// set positions
-		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+		checkCudaErrors(cudaMemcpy(devPositions + oldScene->numParticles,
 								   &(positions[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
 		// set masses
-		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + oldScene->numParticles,
 												   massPerParticle,
 												   numParticles);	
 		// set phases
-		setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+		setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + oldScene->numParticles,
 															  devSolidPhaseCounter,
 															  1,
 															  numParticles);
-		scene->numParticles += numParticles;
+		oldScene->numParticles += numParticles;
 	}
 
 	void addRigidBody(const std::vector<glm::vec3> & initialPositions, const std::vector<glm::vec3> & initialPositions_CM_Origin, const float massPerParticle)
 	{
 		int numParticles = initialPositions.size();
-		if (scene->numParticles + numParticles >= scene->numMaxParticles)
+		if (oldScene->numParticles + numParticles >= oldScene->numMaxParticles)
 		{
 			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
 			throw std::exception(message.c_str());
 		}
 
-		if (scene->numRigidBodies + 1 >= scene->numMaxRigidBodies)
+		if (oldScene->numRigidBodies + 1 >= oldScene->numMaxRigidBodies)
 		{
 			std::string message = std::string(__FILE__) + std::string("num rigid bodies exceed num max rigid bodies");
 			throw std::exception(message.c_str());
@@ -323,11 +447,11 @@ struct ParticleSolver
 		}
 
 		// set positions
-		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+		checkCudaErrors(cudaMemcpy(devPositions + oldScene->numParticles,
 								   &(initialPositions[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
-		checkCudaErrors(cudaMemcpy(devRigidBodyInitialPositions + scene->numParticles,
+		checkCudaErrors(cudaMemcpy(devRigidBodyInitialPositions + oldScene->numParticles,
 								   &(initialPositions_CM_Origin[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
@@ -335,28 +459,28 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
 		// set masses
-		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + oldScene->numParticles,
 												   massPerParticle,
 												   numParticles);
 		// set phases
-		setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+		setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + oldScene->numParticles,
 													   devSolidPhaseCounter,
 													   numParticles);
 		// set range for particle id
-		setDevArr_int2<<<1, 1>>>(devRigidBodyParticleIdRange + scene->numRigidBodies,
-								 make_int2(scene->numParticles, scene->numParticles + numParticles),
+		setDevArr_int2<<<1, 1>>>(devRigidBodyParticleIdRange + oldScene->numRigidBodies,
+								 make_int2(oldScene->numParticles, oldScene->numParticles + numParticles),
 								 1);
 		// increment phase counter
 		increment<<<1, 1>>>(devSolidPhaseCounter);
 		
-		scene->numParticles += numParticles;
-		scene->numRigidBodies += 1;
+		oldScene->numParticles += numParticles;
+		oldScene->numRigidBodies += 1;
 	}
 
 	void addFluids(const std::vector<glm::vec3> & positions, const float massPerParticle)
 	{
 		int numParticles = positions.size();
-		if (scene->numParticles + numParticles >= scene->numMaxParticles)
+		if (oldScene->numParticles + numParticles >= oldScene->numMaxParticles)
 		{
 			std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
 			throw std::exception(message.c_str());
@@ -366,34 +490,34 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
 		// set positions
-		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+		checkCudaErrors(cudaMemcpy(devPositions + oldScene->numParticles,
 								   &(positions[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
 		// set masses
-		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + oldScene->numParticles,
 												   massPerParticle,
 												   numParticles);	
 		// fluid phase is always < 0
-		setDevArr_int<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+		setDevArr_int<<<numBlocks, numThreads>>>(devPhases + oldScene->numParticles,
 												 fluidPhaseCounter,
 												 numParticles);
 		fluidPhaseCounter -= 1;
-		scene->numParticles += numParticles;
+		oldScene->numParticles += numParticles;
 	}
 
 	// spaghetti
     void addNoodles(const std::vector<glm::vec3> & positions, const std::vector<glm::int2> & distancePairs, const std::vector<glm::vec2> & distanceParams, const float massPerParticle, const bool doSelfCollide = true)
     {
         int numParticles = positions.size();
-        if (scene->numParticles + numParticles >= scene->numMaxParticles)
+        if (oldScene->numParticles + numParticles >= oldScene->numMaxParticles)
         {
             std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
             throw std::exception(message.c_str());
         }
 
         int numDistanceConstraints = distancePairs.size();
-        if (scene->numParticles + numDistanceConstraints >= scene->numMaxDistancePairs)
+        if (oldScene->numParticles + numDistanceConstraints >= oldScene->numMaxDistancePairs)
         {
             std::string message = std::string(__FILE__) + std::string("num distance pairs exceed num max distance pairs");
             throw std::exception(message.c_str());
@@ -403,18 +527,18 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
 		// set positions
-		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+		checkCudaErrors(cudaMemcpy(devPositions + oldScene->numParticles,
 								   &(positions[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
 		// set masses
-		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + oldScene->numParticles,
 												   massPerParticle,
 												   numParticles);	
 		if (doSelfCollide)
 		{ 
 			// set phases
-			setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+			setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + oldScene->numParticles,
 																  devSolidPhaseCounter,
 																  1,
 																  numParticles);
@@ -422,7 +546,7 @@ struct ParticleSolver
 		else
 		{ 
 			// set phases
-			setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+			setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + oldScene->numParticles,
 														   devSolidPhaseCounter,
 														   numParticles);
 			// increment phase counter
@@ -430,22 +554,22 @@ struct ParticleSolver
 		}
 
 		// set distance constraints
-		checkCudaErrors(cudaMemcpy(devDistancePairs + scene->numDistancePairs,
+		checkCudaErrors(cudaMemcpy(devDistancePairs + oldScene->numDistancePairs,
 								   &(distancePairs[0].x),
 								   numDistanceConstraints * sizeof(int) * 2,
 								   cudaMemcpyHostToDevice));
 		int numDistancePairsBlock, numDistancePairsThreads;
 		GetNumBlocksNumThreads(&numDistancePairsBlock, &numDistancePairsThreads, numDistanceConstraints);
-		accDevArr_int2<<<numDistancePairsBlock, numDistancePairsThreads>>>(devDistancePairs + scene->numDistancePairs,
-																		   make_int2(scene->numParticles),
+		accDevArr_int2<<<numDistancePairsBlock, numDistancePairsThreads>>>(devDistancePairs + oldScene->numDistancePairs,
+																		   make_int2(oldScene->numParticles),
 																		   numDistanceConstraints);
-		checkCudaErrors(cudaMemcpy(devDistanceParams + scene->numDistancePairs,
+		checkCudaErrors(cudaMemcpy(devDistanceParams + oldScene->numDistancePairs,
 								   &(distanceParams[0]),
 								   numDistanceConstraints * sizeof(float) * 2,
 								   cudaMemcpyHostToDevice));
 
-		scene->numParticles += numParticles;
-		scene->numDistancePairs += numDistanceConstraints;
+		oldScene->numParticles += numParticles;
+		oldScene->numDistancePairs += numDistanceConstraints;
 	}
 
     // cloth
@@ -459,35 +583,35 @@ struct ParticleSolver
 				  const bool doSelfCollide = true)
     {
         int numParticles = positions.size();
-        if (scene->numParticles + numParticles >= scene->numMaxParticles)
+        if (oldScene->numParticles + numParticles >= oldScene->numMaxParticles)
         {
             std::string message = std::string(__FILE__) + std::string("num particles exceed num max particles");
             throw std::exception(message.c_str());
         }
 
         int numDistanceConstraints = distancePairs.size();
-        if (scene->numDistancePairs + numDistanceConstraints >= scene->numMaxDistancePairs)
+        if (oldScene->numDistancePairs + numDistanceConstraints >= oldScene->numMaxDistancePairs)
         {
             std::string message = std::string(__FILE__) + std::string("num distance pairs exceed num max distance pairs");
             throw std::exception(message.c_str());
         }
     
 		int numBendings = bendings.size();
-		if (scene->numBendings + numBendings >= scene->numMaxBendings)
+		if (oldScene->numBendings + numBendings >= oldScene->numMaxBendings)
 		{
             std::string message = std::string(__FILE__) + std::string("num bendings exceed num max bendings");
             throw std::exception(message.c_str());
 		}
 
 		int numFaces = faces.size();
-		if (scene->numWindFaces + numFaces >= scene->numMaxWindFaces)
+		if (oldScene->numWindFaces + numFaces >= oldScene->numMaxWindFaces)
 		{
             std::string message = std::string(__FILE__) + std::string("num faces exceed num max faces");
             throw std::exception(message.c_str());
 		}
 
 		int numImmovables = immovables.size();
-		if (scene->numImmovables + numImmovables >= scene->numMaxImmovables)
+		if (oldScene->numImmovables + numImmovables >= oldScene->numMaxImmovables)
 		{
             std::string message = std::string(__FILE__) + std::string("num immovables exceed num max immovables");
             throw std::exception(message.c_str());
@@ -497,18 +621,18 @@ struct ParticleSolver
 		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
 		// set positions
-		checkCudaErrors(cudaMemcpy(devPositions + scene->numParticles,
+		checkCudaErrors(cudaMemcpy(devPositions + oldScene->numParticles,
 								   &(positions[0].x),
 								   numParticles * sizeof(float) * 3,
 								   cudaMemcpyHostToDevice));
 		// set masses
-		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + scene->numParticles,
+		setDevArr_float<<<numBlocks, numThreads>>>(devMasses + oldScene->numParticles,
 												   massPerParticle,
 												   numParticles);	
 		if (doSelfCollide)
 		{ 
 			// set phases
-			setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+			setDevArr_counterIncrement<<<numBlocks, numThreads>>>(devPhases + oldScene->numParticles,
 																  devSolidPhaseCounter,
 																  1,
 																  numParticles);
@@ -516,7 +640,7 @@ struct ParticleSolver
 		else
 		{ 
 			// set phases
-			setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + scene->numParticles,
+			setDevArr_devIntPtr<<<numBlocks, numThreads>>>(devPhases + oldScene->numParticles,
 														   devSolidPhaseCounter,
 														   numParticles);
 			// increment phase counter
@@ -524,16 +648,16 @@ struct ParticleSolver
 		}
 
 		// set distance constraints
-		checkCudaErrors(cudaMemcpy(devDistancePairs + scene->numDistancePairs,
+		checkCudaErrors(cudaMemcpy(devDistancePairs + oldScene->numDistancePairs,
 								   &(distancePairs[0].x),
 								   numDistanceConstraints * sizeof(int) * 2,
 								   cudaMemcpyHostToDevice));
 		int numDistancePairsBlock, numDistancePairsThreads;
 		GetNumBlocksNumThreads(&numDistancePairsBlock, &numDistancePairsThreads, numDistanceConstraints);
-		accDevArr_int2<<<numDistancePairsBlock, numDistancePairsThreads>>>(devDistancePairs + scene->numDistancePairs,
-																		   make_int2(scene->numParticles),
+		accDevArr_int2<<<numDistancePairsBlock, numDistancePairsThreads>>>(devDistancePairs + oldScene->numDistancePairs,
+																		   make_int2(oldScene->numParticles),
 																		   numDistanceConstraints);
-		checkCudaErrors(cudaMemcpy(devDistanceParams + scene->numDistancePairs,
+		checkCudaErrors(cudaMemcpy(devDistanceParams + oldScene->numDistancePairs,
 								   &(distanceParams[0].x),
 								   numDistanceConstraints * sizeof(float) * 2,
 								   cudaMemcpyHostToDevice));
@@ -543,24 +667,24 @@ struct ParticleSolver
 			int numBendingBlocks, numBendingThreads;
 			GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, numBendings);
 			// set bending constraints
-			checkCudaErrors(cudaMemcpy(devBendings + scene->numBendings,
+			checkCudaErrors(cudaMemcpy(devBendings + oldScene->numBendings,
 									   &(bendings[0].x),
 									   numBendings * sizeof(int4),
 									   cudaMemcpyHostToDevice));
-			accDevArr_int4<<<numBendingBlocks, numBendingThreads>>>(devBendings + scene->numBendings,
-																	make_int4(scene->numParticles),
+			accDevArr_int4<<<numBendingBlocks, numBendingThreads>>>(devBendings + oldScene->numBendings,
+																	make_int4(oldScene->numParticles),
 																	numBendings);
 		}
 
 		// add faces
 		int numWindFaceBlocks, numWindFaceThreads;
 		GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, numFaces);
-		checkCudaErrors(cudaMemcpy(devWindFaces + scene->numWindFaces,
+		checkCudaErrors(cudaMemcpy(devWindFaces + oldScene->numWindFaces,
 								   &(faces[0].x),
 								   numFaces * sizeof(int3),
 								   cudaMemcpyHostToDevice));
-		accDevArr_int3<<<numWindFaceBlocks, numWindFaceThreads>>>(devWindFaces + scene->numWindFaces,
-																  make_int3(scene->numParticles),
+		accDevArr_int3<<<numWindFaceBlocks, numWindFaceThreads>>>(devWindFaces + oldScene->numWindFaces,
+																  make_int3(oldScene->numParticles),
 																  numFaces);
 
 
@@ -569,20 +693,20 @@ struct ParticleSolver
 		{
 			int numImmovableBlocks, numImmovableThreads;
 			GetNumBlocksNumThreads(&numImmovableBlocks, &numImmovableThreads, numImmovables);
-			checkCudaErrors(cudaMemcpy(devImmovables + scene->numImmovables,
+			checkCudaErrors(cudaMemcpy(devImmovables + oldScene->numImmovables,
 									   &(immovables[0]),
 									   numImmovables * sizeof(int),
 									   cudaMemcpyHostToDevice));
-			accDevArr_int<<<numImmovableBlocks, numImmovableThreads>>>(devImmovables + scene->numImmovables,
-																	   scene->numParticles,
+			accDevArr_int<<<numImmovableBlocks, numImmovableThreads>>>(devImmovables + oldScene->numImmovables,
+																	   oldScene->numParticles,
 																	   numImmovables);
 		}
 
-		scene->numImmovables += numImmovables;
-		scene->numBendings += numBendings;
-		scene->numParticles += numParticles;
-		scene->numDistancePairs += numDistanceConstraints;
-		scene->numWindFaces += numFaces;
+		oldScene->numImmovables += numImmovables;
+		oldScene->numBendings += numBendings;
+		oldScene->numParticles += numParticles;
+		oldScene->numDistancePairs += numDistanceConstraints;
+		oldScene->numWindFaces += numFaces;
     }
 
 	void updateGrid(int numBlocks, int numThreads)
@@ -593,7 +717,7 @@ struct ParticleSolver
 												cellOrigin,
 												cellSize,
 												gridSize,
-												scene->numParticles);
+												numParticles);
 		size_t tempStorageSize = 0;
 		// get temp storage size (not sorting yet)
 		cub::DeviceRadixSort::SortPairs(NULL,
@@ -602,7 +726,7 @@ struct ParticleSolver
 										devSortedCellId,
 										devParticleId,
 										devSortedParticleId,
-										scene->numParticles);
+										numParticles);
 		updateTempStorageSize(tempStorageSize);
 		// sort!
 		cub::DeviceRadixSort::SortPairs(devTempStorage,
@@ -611,8 +735,8 @@ struct ParticleSolver
 										devSortedCellId,
 										devParticleId,
 										devSortedParticleId,
-										scene->numParticles);
-		findStartEndId<<<numBlocks, numThreads>>>(devCellStart, devCellEnd, devSortedCellId, scene->numParticles);
+										numParticles);
+		findStartEndId<<<numBlocks, numThreads>>>(devCellStart, devCellEnd, devSortedCellId, numParticles);
 
 		reorderParticlesData<<<numBlocks, numThreads>>>(devSortedNewPositions,
 														devSortedPositions,
@@ -629,7 +753,7 @@ struct ParticleSolver
 														devGroupIds,
 														devMapToOriginalIds,
 														devSortedParticleId,
-														scene->numParticles);
+														numParticles);
 
 		std::swap(devSortedNewPositions, devNewPositions);
 		std::swap(devSortedPositions, devPositions);
@@ -642,7 +766,7 @@ struct ParticleSolver
 
 	void resetGrid(int numBlocks, int numThreads)
 	{
-		resetStartEndId<<<numBlocks, numThreads>>>(devCellStart, devCellEnd, devSortedCellId, scene->numParticles);
+		resetStartEndId<<<numBlocks, numThreads>>>(devCellStart, devCellEnd, devSortedCellId, numParticles);
 	}
 
 	void update(const int numSubTimeStep,
@@ -651,11 +775,11 @@ struct ParticleSolver
 				const glm::vec3 & pickedParticlePosition = glm::vec3(0.0f),
 				const glm::vec3 & pickedParticleVelocity = glm::vec3(0.0f))
 	{
-		if (scene->numParticles <= 0) return;
+		if (numParticles <= 0) return;
 
 		float subDeltaTime = deltaTime / (float)numSubTimeStep;
 		int numBlocks, numThreads;
-		GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
+		GetNumBlocksNumThreads(&numBlocks, &numThreads, numParticles);
 
 		int3 fluidGridSearchOffset = make_int3(ceil(make_float3(fluidKernelRadius) / cellSize));
 		bool useAkinciCohesionTension = true;
@@ -663,7 +787,7 @@ struct ParticleSolver
 		for (int i = 0;i < numSubTimeStep;i++)
 		{ 
 			// we need to make picked particle immovable
-			if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
+			if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < numParticles)
 			{
                 int pickedNewParticleId = queryNewParticleId(pickedOriginalParticleId);
 				setParticle(devPositions, pickedNewParticleId, pickedParticlePosition, glm::vec3(0.0f));
@@ -672,92 +796,95 @@ struct ParticleSolver
 			predictPositions<<<numBlocks, numThreads>>>(devNewPositions,
 														devPositions,
 														devVelocities,
-														scene->numParticles,
+														numParticles,
 														subDeltaTime);
 
 			applyGravity<<<numBlocks, numThreads>>>(devNewPositions,
-													scene->numParticles,
+													numParticles,
 													subDeltaTime);
 
 			// compute grid
 			updateGrid(numBlocks, numThreads);
 
-			inverseMapping<<<numBlocks, numThreads>>>(devMapToNewIds, devMapToOriginalIds, scene->numParticles);
+			inverseMapping<<<numBlocks, numThreads>>>(devMapToNewIds, devMapToOriginalIds, numParticles);
 
 			// compute scaled masses
 			computeInvScaledMasses<<<numBlocks, numThreads>>>(devInvScaledMasses,
 															  devMasses,
 															  devPositions,
 															  MASS_SCALING_CONSTANT,
-															  scene->numParticles);
+															  numParticles);
 			#ifdef CHECK_NAN
-				printIfNan(devInvScaledMasses, scene->numParticles, "find nan after InvScaledMasses");
+				printIfNan(devInvScaledMasses, oldScene->numParticles, "find nan after InvScaledMasses");
 			#endif
 
 			// stabilize iterations
 			for (int i = 0; i < 2; i++)
 			{
-				for (const Plane & plane : scene->planes)
+				for (const Plane & plane : planes)
 				{
 					planeStabilize<<<numBlocks, numThreads>>>(devPositions,
 															  devNewPositions,
-															  scene->numParticles,
+															  numParticles,
 															  make_float3(plane.origin),
 															  make_float3(plane.normal),
-															  scene->radius);
+															  solidRadius);
 				}
 			}
 			#ifdef CHECK_NAN
-				printIfNan(devNewPositions, scene->numParticles, "fina nan after plane stabilize collision");
+				printIfNan(devNewPositions, oldScene->numParticles, "fina nan after plane stabilize collision");
 			#endif
 
+			/*
 			// apply Wind Force
-			if (scene->numWindFaces > 0)
+			if (oldScene->numWindFaces > 0)
 			{
 				int numWindFaceBlocks, numWindFaceThreads;
-				GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, scene->numWindFaces);
-				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+				GetNumBlocksNumThreads(&numWindFaceBlocks, &numWindFaceThreads, oldScene->numWindFaces);
+				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), oldScene->numParticles);
 				applyWindForce<<<numWindFaceBlocks, numWindFaceThreads>>>(devDeltaX,
 																		  devNewPositions,
 																		  devVelocities,
 																		  devMasses,
 																		  devMapToNewIds,
 																		  devWindFaces,
-																		  scene->numWindFaces,
+																		  oldScene->numWindFaces,
 																		  subDeltaTime);
-				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, oldScene->numParticles);
 				#ifdef CHECK_NAN
-					printIfNan(devNewPositions, scene->numParticles, "find nan after wind force applied");
+					printIfNan(devNewPositions, oldScene->numParticles, "find nan after wind force applied");
 				#endif
 			}
+			*/
 
 			// projecting constraints iterations
 			// (update grid every n iterations)
 			for (int j = 0; j < 2;j++)
 			{
 				// we need to make picked particle immovable
-				if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
+				if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < oldScene->numParticles)
 				{
 					int pickedNewParticleId = queryNewParticleId(pickedOriginalParticleId);
 					setParticle(devNewPositions, pickedNewParticleId, pickedParticlePosition, glm::vec3(0.0f));
 				}
 
 				// solving all plane collisions
-				for (const Plane & plane : scene->planes)
+				for (const Plane & plane : planes)
 				{
 					particlePlaneCollisionConstraint<<<numBlocks, numThreads>>>(devNewPositions,
 																				devPositions,
-																				scene->numParticles,
+																				numParticles,
 																				make_float3(plane.origin),
 																				make_float3(plane.normal),
-																				scene->radius);
+																				solidRadius);
 				}
+				/*
 				#ifdef CHECK_NAN
-					printIfNan(devNewPositions, scene->numParticles, "find nan after particle plane collision");
+					printIfNan(devNewPositions, oldScene->numParticles, "find nan after particle plane collision");
 				#endif
 
 				// solving all particles collisions
-				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), oldScene->numParticles);
 				particleParticleCollisionConstraint<<<numBlocks, numThreads>>>(devDeltaX,
 																			   devNewPositions,
 																			   devPositions,
@@ -765,11 +892,11 @@ struct ParticleSolver
 																			   devPhases,
 																			   devCellStart,
 																			   devCellEnd,
-																			   scene->numParticles,
-																			   scene->radius);
-				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+																			   numParticles,
+																			   solidRadius);
+				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, oldScene->numParticles);
 				#ifdef CHECK_NAN
-					printIfNan(devNewPositions, scene->numParticles, "find nan after particle particle collision");
+					printIfNan(devNewPositions, oldScene->numParticles, "find nan after particle particle collision");
 				#endif
 
 				// fluid
@@ -783,13 +910,13 @@ struct ParticleSolver
 													   300.0f, // relaxation parameter
 													   devCellStart,
 													   devCellEnd,
-													   scene->numParticles,
+													   oldScene->numParticles,
 													   useAkinciCohesionTension);
 				#ifdef CHECK_NAN
-					printIfNan(devNewPositions, scene->numParticles, "find nan after fluid lambda");
+					printIfNan(devNewPositions, oldScene->numParticles, "find nan after fluid lambda");
 				#endif
 
-				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+				setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), oldScene->numParticles);
 				fluidPosition<<<numBlocks, numThreads>>>(devDeltaX,
 														 devNewPositions,
 														 devFluidLambdas,
@@ -800,51 +927,51 @@ struct ParticleSolver
 														 4, // N for sCorr
 														 devCellStart,
 														 devCellEnd,
-														 scene->numParticles,
+														 oldScene->numParticles,
 														 useAkinciCohesionTension);
-				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+				accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, oldScene->numParticles);
 				#ifdef CHECK_NAN
-					printIfNan(devNewPositions, scene->numParticles, "find nan after fluid position");
+					printIfNan(devNewPositions, oldScene->numParticles, "find nan after fluid position");
 				#endif
 
 				// solve all distance constraints
-				if (scene->numDistancePairs > 0)
+				if (oldScene->numDistancePairs > 0)
 				{ 
-					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), oldScene->numParticles);
 					int numDistanceBlocks, numDistanceThreads;
-					GetNumBlocksNumThreads(&numDistanceBlocks, &numDistanceThreads, scene->numDistancePairs);
+					GetNumBlocksNumThreads(&numDistanceBlocks, &numDistanceThreads, oldScene->numDistancePairs);
 					distanceConstraints<<<numDistanceBlocks, numDistanceThreads>>>(devDeltaX,
 																				   devNewPositions,
 																				   devInvScaledMasses,
 																				   devDistancePairs,
 																				   devDistanceParams,
 																				   devMapToNewIds,
-																				   scene->numDistancePairs);
-					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+																				   oldScene->numDistancePairs);
+					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, oldScene->numParticles);
 					#ifdef CHECK_NAN
-						printIfNan(devNewPositions, scene->numParticles, "find nan after distance constraint");
+						printIfNan(devNewPositions, oldScene->numParticles, "find nan after distance constraint");
 					#endif
 				}
 
 				// solve all bending constraints
-				if (scene->numBendings > 0)
+				if (oldScene->numBendings > 0)
 				{
-					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), scene->numParticles);
+					setDevArr_float3<<<numBlocks, numThreads>>>(devDeltaX, make_float3(0.f), oldScene->numParticles);
 					int numBendingBlocks, numBendingThreads;
-					GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, scene->numBendings);
+					GetNumBlocksNumThreads(&numBendingBlocks, &numBendingThreads, oldScene->numBendings);
 					bendingConstraints<<<numBendingBlocks, numBendingThreads>>>(devDeltaX,
 																				devNewPositions,
 																				devInvScaledMasses,
 																				devBendings,
 																				devMapToNewIds,
-																				scene->numBendings);
-					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, scene->numParticles);
+																				oldScene->numBendings);
+					accDevArr_float3<<<numBlocks, numThreads>>>(devNewPositions, devDeltaX, oldScene->numParticles);
 				}
 
 				// solve all rigidbody constraints
-				if (scene->numRigidBodies > 0)
+				if (oldScene->numRigidBodies > 0)
 				{ 
-					shapeMatchingAlphaOne<<<scene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
+					shapeMatchingAlphaOne<<<oldScene->numRigidBodies, NUM_MAX_PARTICLE_PER_RIGID_BODY>>>(devRigidBodyRotations,
 																									  devRigidBodyCMs,
 																									  devNewPositions,
 																									  devMapToNewIds,
@@ -853,25 +980,26 @@ struct ParticleSolver
 				}
 
 				// solve immovalbe constraints
-				if (scene->numImmovables > 0)
+				if (oldScene->numImmovables > 0)
 				{
 					int numImmovableBlocks, numImmovableThreads;
-					GetNumBlocksNumThreads(&numImmovableBlocks, &numImmovableThreads, scene->numImmovables);
+					GetNumBlocksNumThreads(&numImmovableBlocks, &numImmovableThreads, oldScene->numImmovables);
 					immovableConstraints<<<numImmovableBlocks, numImmovableThreads>>>(devNewPositions,
 																					  devPositions,
 																					  devImmovables,
 																					  devMapToNewIds,
-																					  scene->numImmovables);
+																					  oldScene->numImmovables);
 				}
+				*/
 			} // end projecting constraints
 
 			updateVelocity<<<numBlocks, numThreads>>>(devVelocities,
 													  devNewPositions,
 													  devPositions,
-													  scene->numParticles,
+													  numParticles,
 													  1.0f / subDeltaTime);
 
-			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, devPhases, PARTICLE_SLEEPING_EPSILON, scene->numParticles);
+			updatePositions<<<numBlocks, numThreads>>>(devPositions, devNewPositions, devPhases, PARTICLE_SLEEPING_EPSILON, numParticles);
 
 			// vorticity confinement part 1.
 			fluidOmega<<<numBlocks, numThreads>>>(devFluidOmegas,
@@ -880,7 +1008,7 @@ struct ParticleSolver
 												  devPhases,
 												  devCellStart,
 												  devCellEnd,
-												  scene->numParticles);
+												  numParticles);
 
 			// vorticity confinement part 2.
 			fluidVorticity<<<numBlocks, numThreads>>>(devVelocities,
@@ -890,7 +1018,7 @@ struct ParticleSolver
 													  devPhases,
 													  devCellStart,
 													  devCellEnd,
-													  scene->numParticles,
+													  numParticles,
 													  subDeltaTime);
 
 			if (useAkinciCohesionTension)
@@ -902,7 +1030,7 @@ struct ParticleSolver
 													   devPhases,
 													   devCellStart,
 													   devCellEnd,
-													   scene->numParticles);
+													   numParticles);
 
 				/// TODO:: if fluid particle stuck inside solid particle then solid particle can float!
 				fluidAkinciTension<<<numBlocks, numThreads>>>(devTempFloat3,
@@ -915,7 +1043,7 @@ struct ParticleSolver
 															  0.5, // tension strength
 															  devCellStart,
 															  devCellEnd,
-															  scene->numParticles,
+															  numParticles,
 															  subDeltaTime);
 				std::swap(devVelocities, devTempFloat3);
 			}
@@ -928,14 +1056,14 @@ struct ParticleSolver
 												 devPhases,
 												 devCellStart,
 												 devCellEnd,
-												 scene->numParticles);
+												 numParticles);
 			std::swap(devVelocities, devTempFloat3);
 
 			resetGrid(numBlocks, numThreads);
 		} // end loop over substeps
 
 		// we need to make picked particle immovable
-		if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < scene->numParticles)
+		if (pickedOriginalParticleId >= 0 && pickedOriginalParticleId < numParticles)
 		{
             int pickedNewParticleId = queryNewParticleId(pickedOriginalParticleId);
 			glm::vec3 solvedPickedParticlePosition = getParticlePosition(pickedNewParticleId);
@@ -944,6 +1072,8 @@ struct ParticleSolver
 	}
 
 	/// TODO:: implement object's destroyer
+	size_t		numParticles;
+	float		solidRadius;
 
 	float3 *	devNewPositions;
 	float3 *	devPositions;
@@ -965,6 +1095,7 @@ struct ParticleSolver
 
 	float3 *	devDeltaX;
 	float3 *	devTempFloat3;
+	float *		devInvMasses;
 	float *		devInvScaledMasses;
 	int *		devSolidPhaseCounter;
 	int			fluidPhaseCounter;
@@ -977,18 +1108,23 @@ struct ParticleSolver
 	int *		devSortedCellId;
 	int *		devSortedParticleId;
 
+	int			numRigidbody;
 	int2 *		devRigidBodyParticleIdRange;
 	float3 *	devRigidBodyInitialPositions;
 	quaternion * devRigidBodyRotations;
 	float3 *	devRigidBodyCMs;// center of mass
 
+	int			numDistanceConstraints;
 	int2 *		devDistancePairs;
 	float2 *	devDistanceParams;
 
+	int			numBendingConstraints;
 	int4 *		devBendings;
 
+	int			numWindFaces;
 	int3 *		devWindFaces;
 
+	int			numImmovables;
 	int *		devImmovables;
 
 	void *		devTempStorage = nullptr;
@@ -1008,5 +1144,6 @@ struct ParticleSolver
 	const float3	cellSize;
 	const int3		gridSize;
 
-	std::shared_ptr<Scene> scene;
+	std::shared_ptr<OldSceneFormat> oldScene;
+	std::vector<Plane> planes;
 };

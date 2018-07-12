@@ -29,6 +29,7 @@
 const float windowWidth = 1280;
 const float windowHeight = 720;
 
+std::shared_ptr<OldSceneFormat> oldScene;
 std::shared_ptr<Scene> scene;
 GLFWwindow * window;
 ParticleRenderer * renderer;
@@ -107,7 +108,7 @@ void updateControl()
 void computePickedParticlePosition(glm::vec3 * particlePosition, glm::vec3 * particleVelocity)
 {
 	// compute space that allows the object to be moved
-	Camera & camera = scene->camera;
+	Camera & camera = oldScene->camera;
 	float d = glm::dot(currentPickedParticlePosition - camera.pos, camera.dir);
 	glm::vec3 spanOrigin = camera.pos + d * camera.dir;
 	glm::vec3 spanBasisZ = glm::normalize(-camera.dir);
@@ -136,9 +137,9 @@ std::vector<glm::vec3> CreateBoxParticles(const glm::ivec3 & dimension, const gl
 	return positions;
 }
 
-std::shared_ptr<Scene> initRigidBodiesScene()
+std::shared_ptr<OldSceneFormat> initRigidBodiesScene()
 {
-	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	std::shared_ptr<OldSceneFormat> scene = std::make_shared<OldSceneFormat>();
 	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
 	scene->planes.push_back(Plane(glm::vec3(0, 0, -1.9), glm::normalize(glm::vec3(0, 0, 1))));
 	scene->planes.push_back(Plane(glm::vec3(0, 0, 1.9), glm::normalize(glm::vec3(0, 0, -1))));
@@ -163,9 +164,9 @@ std::shared_ptr<Scene> initRigidBodiesScene()
 	return scene;
 }
 
-std::shared_ptr<Scene> initSimpleScene()
+std::shared_ptr<OldSceneFormat> initSimpleScene()
 {
-	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	std::shared_ptr<OldSceneFormat> scene = std::make_shared<OldSceneFormat>();
 	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
 	scene->numParticles = 0;
 	scene->numMaxParticles = 50000;
@@ -184,14 +185,14 @@ std::shared_ptr<Scene> initSimpleScene()
 	return scene;
 }
 
-std::shared_ptr<Scene> initFluidScene()
+std::shared_ptr<OldSceneFormat> initFluidScene()
 {
-	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	std::shared_ptr<OldSceneFormat> scene = std::make_shared<OldSceneFormat>();
 	scene->radius = 0.05f;
 
 	const unsigned int width = 20;
 	const unsigned int depth = 20;
-	const unsigned int height = 82;
+	const unsigned int height = 20;
 	const float containerWidth = (width + 1) * scene->radius * 2.0 * 2.5;
 	const float containerDepth = (depth + 1) * scene->radius * 2.0 * 1.5;
 	const float containerHeight = 4.0;
@@ -201,20 +202,20 @@ std::shared_ptr<Scene> initFluidScene()
 	const float startZ = -0.5*containerDepth + diam;
 
 	scene->planes.push_back(Plane(glm::vec3(0), glm::vec3(0, 1, 0)));
-	scene->planes.push_back(Plane(glm::vec3(0, 0, -containerDepth / 2.0f), glm::normalize(glm::vec3(0, 0, 1))));
+	/*scene->planes.push_back(Plane(glm::vec3(0, 0, -containerDepth / 2.0f), glm::normalize(glm::vec3(0, 0, 1))));
 	scene->planes.push_back(Plane(glm::vec3(0, 0, containerDepth / 2.0f), glm::normalize(glm::vec3(0, 0, -1))));
 	scene->planes.push_back(Plane(glm::vec3(-containerWidth / 2.0f, 0, 0), glm::normalize(glm::vec3(1, 0, 0))));
-	scene->planes.push_back(Plane(glm::vec3(containerWidth / 2.0f, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));
+	scene->planes.push_back(Plane(glm::vec3(containerWidth / 2.0f, 0, 0), glm::normalize(glm::vec3(-1, 0, 0))));*/
 	scene->numParticles = 0;
 	scene->numMaxParticles = 60000;
 	scene->numRigidBodies = 0;
 	scene->numMaxRigidBodies = 128;
 
-	scene->pointLight.intensity = glm::vec3(5.0f);
-	scene->pointLight.position = glm::vec3(1, 10, 1);
+	scene->pointLight.intensity = glm::vec3(10.0f);
+	scene->pointLight.position = glm::vec3(1, 10, 5);
 	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
 
-	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight);
+	scene->camera = Camera(glm::vec3(0, 6, 11), glm::vec3(0, 4, 0), glm::radians(55.0f), (float)windowWidth / (float)windowHeight);
 
 	// mass per particle unimplemented
 	scene->fluids.push_back(Fluid::CreateFluidBlock(glm::ivec3(width, height, depth), glm::vec3(startX, startY, startZ), glm::vec3(diam), 0.75f));
@@ -225,9 +226,9 @@ std::shared_ptr<Scene> initFluidScene()
 	return scene;
 }
 
-std::shared_ptr<Scene> initRopesScene()
+std::shared_ptr<OldSceneFormat> initRopesScene()
 {
-	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	std::shared_ptr<OldSceneFormat> scene = std::make_shared<OldSceneFormat>();
 	scene->planes.push_back(Plane(glm::vec3(0, -1.1, 0), glm::vec3(0, 1, 0)));
 	scene->numMaxParticles = 10000;
 	scene->numMaxRigidBodies = 128;
@@ -249,6 +250,23 @@ std::shared_ptr<Scene> initRopesScene()
     scene->clothes.push_back(Cloth::CreateCloth(glm::vec3(2.f, 20.f, 2.f), glm::vec3(0.1f, 0.f, 0.f), glm::vec3(0.f, 0.0f, 0.1f), 10, 10, 1.0f));
     scene->clothes.push_back(Cloth::CreateCloth(glm::vec3(5.f, 20.f, 5.f), glm::vec3(0.1f, 0.f, 0.f), glm::vec3(0.f, 0.1f, 0.0f), 10, 10, 1.0f));
 
+	return scene;
+}
+
+std::shared_ptr<Scene> initGranularScene()
+{
+	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+	// rendering
+	scene->camera = Camera(glm::vec3(0, 10, -12), glm::vec3(0, 2, 0), glm::radians(55.0f), (float) windowWidth / (float) windowHeight);
+	scene->pointLight.intensity = glm::vec3(5.0f);
+	scene->pointLight.position = glm::vec3(1, 5, 1);
+	scene->pointLight.direction = glm::normalize(-scene->pointLight.position);
+
+	// collider
+	scene->planes.push_back(Plane(glm::vec3(0, -1.1, 0), glm::vec3(0, 1, 0)));
+	
+	// particles
+	scene->addGranularsBlock(make_uint3(1, 1, 1), make_float3(0, scene->particleRadius, 0), make_float3(scene->particleRadius * 2.0f), 1.0f);
 	return scene;
 }
 
@@ -277,7 +295,8 @@ int main()
 	cudaGLSetGLDevice(0);
 	window = InitGL(windowWidth, windowHeight);
 
-	scene = initFluidScene();
+	oldScene = initFluidScene();
+	scene = initGranularScene();
 	renderer = new ParticleRenderer(glm::uvec2(windowWidth, windowHeight), scene);
 	solver = new ParticleSolver(scene);
 
@@ -306,13 +325,13 @@ int main()
 		updateControl();
 
 		// pick particle 1
-		if (currentHoldingOriginalParticleId >= 0 && currentHoldingOriginalParticleId < scene->numParticles)
+		/*if (currentHoldingOriginalParticleId >= 0 && currentHoldingOriginalParticleId < scene->numParticles)
 		{
 			glm::vec3 position, velocity;
 			computePickedParticlePosition(&position, &velocity);
 			solver->update(2, 1.0f / 60.0f, currentHoldingOriginalParticleId, position, velocity);
 		}
-		else
+		else*/
 		{
 			// solver update
 			solver->update(2, 1.0f / 60.0f);
@@ -323,15 +342,15 @@ int main()
 			// for particles
 			float4 *dptr = renderer->mapParticlePositionsSsbo();
 			int numBlocks, numThreads;
-			GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles);
+			GetNumBlocksNumThreads(&numBlocks, &numThreads, scene->numParticles());
 			mapParticleInfos<<<numBlocks, numThreads>>>(dptr,
 														solver->devPositions,
 														solver->devGroupIds,
-														scene->numParticles);
+														scene->numParticles());
 			renderer->unmapParticlePositionsSsbo();
 		}
 		{
-			if (scene->numRigidBodies > 0)
+			/*if (scene->numRigidBodies > 0)
 			{ 
 				matrix4 *dptr = renderer->mapMatricesSsbo();
 				int numBlocks, numThreads;
@@ -341,7 +360,7 @@ int main()
 													   solver->devRigidBodyCMs,
 													   scene->numRigidBodies);
 				renderer->unmapMatricesSsbo();
-			}
+			}*/
 		}
 		renderer->update();
 		glfwPollEvents();

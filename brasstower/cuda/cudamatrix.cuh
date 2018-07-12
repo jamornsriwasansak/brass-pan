@@ -22,7 +22,7 @@ inline float4 cross3(const float4 & a, const float4 & b)
 	return make_float4(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x, 0.0f);
 }
 
-__device__ float4 getNormalizedVec(const float4 & v)
+inline __device__ float4 getNormalizedVec(const float4 & v)
 {
 	float invLen = 1.0f / sqrtf(dot(v, v));
 	return make_float4(v.x * invLen, v.y * invLen, v.z * invLen, v.w * invLen);

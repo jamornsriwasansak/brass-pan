@@ -59,6 +59,41 @@ struct ParticleRenderer
 		// init ssbobuffer for particle positions
 		glGenBuffers(1, &particlePositionsSsboBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, particlePositionsSsboBuffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 4 * sizeof(float) * scene->numParticles(), 0, GL_DYNAMIC_COPY);
+		checkCudaErrors(cudaGraphicsGLRegisterBuffer(&particlePositionsSsboGraphicsRes, particlePositionsSsboBuffer, cudaGraphicsRegisterFlagsWriteDiscard));
+
+		// init ssbobuffer for transformation matrices
+		glGenBuffers(1, &rigidBodyMatricesSsboBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, rigidBodyMatricesSsboBuffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 4 * sizeof(float) * scene->numParticles(), 0, GL_DYNAMIC_COPY);
+		checkCudaErrors(cudaGraphicsGLRegisterBuffer(&rigidBodyMatricesSsboGraphicsRes, rigidBodyMatricesSsboBuffer, cudaGraphicsRegisterFlagsWriteDiscard));
+
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_CULL_FACE);
+		glEnable(GL_MULTISAMPLE);
+		glDepthFunc(GL_LEQUAL);
+
+		// load particle mesh
+		particleMesh = MeshGenerator::Cube();
+		particleMesh->createOpenglBuffer();
+		planeMesh = MeshGenerator::Plane();
+		planeMesh->createOpenglBuffer();
+
+		initShadowFramebuffer();
+
+		reloadShaders();
+	}
+
+	ParticleRenderer(const glm::uvec2 & resolution, const std::shared_ptr<OldSceneFormat> & scene):
+		resolution(resolution),
+		oldScene(scene)
+	{
+		glGenVertexArrays(1, &globalVaoHandle);
+		glBindVertexArray(globalVaoHandle);
+
+		// init ssbobuffer for particle positions
+		glGenBuffers(1, &particlePositionsSsboBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, particlePositionsSsboBuffer);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 4 * sizeof(float) * scene->numMaxParticles, 0, GL_DYNAMIC_COPY);
 		checkCudaErrors(cudaGraphicsGLRegisterBuffer(&particlePositionsSsboGraphicsRes, particlePositionsSsboBuffer, cudaGraphicsRegisterFlagsWriteDiscard));
 
@@ -318,11 +353,11 @@ struct ParticleRenderer
 			glBindBuffer(GL_ARRAY_BUFFER, particleMesh->mGl.mVerticesBuffer->mHandle);
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 			particlesColorCodeProgram_uMVPMatrix->setMat4(cameraVpMatrix);
-			particlesColorCodeProgram_uRadius->setFloat(scene->radius);
+			particlesColorCodeProgram_uRadius->setFloat(scene->particleRadius);
 			particlesColorCodeProgram_uCameraPosition->setVec3(scene->camera.pos);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, particlePositionsSsboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
-			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
+			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles());
 			glDisableVertexAttribArray(0);
 		}
 
@@ -343,7 +378,7 @@ struct ParticleRenderer
 		glm::mat4 shadowMatrix = scene->pointLight.shadowMatrix();
 		// render shadow map
 		{
-			// for mesh
+			/*// for mesh
 			{
 				glUseProgram(meshShadowProgram->mHandle);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, meshShadowProgram_ssboBinding, rigidBodyMatricesSsboBuffer);
@@ -358,7 +393,7 @@ struct ParticleRenderer
 					glDrawElements(GL_TRIANGLES, scene->rigidBodies[i]->mesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0);
 				}
 				glDisableVertexAttribArray(0);
-			}
+			}*/
 
 			// for particles
 			{
@@ -368,11 +403,11 @@ struct ParticleRenderer
 				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
 				particlesShadowProgram_uShadowMatrix->setMat4(shadowMatrix);
-				particlesShadowProgram_uRadius->setFloat(scene->radius);
+				particlesShadowProgram_uRadius->setFloat(scene->particleRadius);
 
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesShadowProgram_ssboBinding, particlePositionsSsboBuffer);
 				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
-				glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
+				glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles());
 				glEnableVertexAttribArray(0);
 			}
 		}
@@ -396,7 +431,7 @@ struct ParticleRenderer
 
 			particlesDrawingProgram_uMVPMatrix->setMat4(cameraVpMatrix);
 			particlesDrawingProgram_uShadowMatrix->setMat4(shadowMatrix);
-			particlesDrawingProgram_uRadius->setFloat(scene->radius);
+			particlesDrawingProgram_uRadius->setFloat(scene->particleRadius);
 			particlesDrawingProgram_uCameraPosition->setVec3(scene->camera.pos);
 
 			glActiveTexture(GL_TEXTURE0);
@@ -405,7 +440,7 @@ struct ParticleRenderer
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, particlesDrawingProgram_ssboBinding, particlePositionsSsboBuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleMesh->mGl.mIndicesBuffer->mHandle);
-			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles);
+			glDrawElementsInstanced(GL_TRIANGLES, particleMesh->mNumTriangles * 3, GL_UNSIGNED_INT, (void*)0, scene->numParticles());
 			glDisableVertexAttribArray(0);
 		}
 
@@ -502,6 +537,7 @@ struct ParticleRenderer
 	std::shared_ptr<Mesh>			particleMesh;
 	std::shared_ptr<Mesh>			planeMesh;
 
+	const std::shared_ptr<OldSceneFormat>	oldScene;
 	const std::shared_ptr<Scene>	scene;
 	const glm::uvec2				resolution;
 	const std::shared_ptr<Camera>	camera;
