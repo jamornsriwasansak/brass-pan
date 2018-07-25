@@ -423,6 +423,7 @@ fluidNormal(float3 * __restrict__ normals,
 						const float dist2 = length2(diff);
 						if (dist2 <= KernelSquaredRadius && dist2 > 0)
 						{
+							/// TODO:: use mass here
 							normal += 1.0f / densities[j] * gradientSpikyKernel(diff, dist2);
 						}
 					}
