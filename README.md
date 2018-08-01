@@ -1,5 +1,5 @@
 # brasstower
-A position-based physics engine
+A CUDA + OpenGL powered position-based physics engine
 
 [![unified particle physics](http://jamorn.me/pics/upp_large..jpg)](https://www.youtube.com/watch?v=-DgD_PovEdk)
 
