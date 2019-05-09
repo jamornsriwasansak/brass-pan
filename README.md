@@ -15,6 +15,7 @@ For efficient collision detection and density estimation, an efficient hash-base
 
 ## Youtube
 [![unified particle physics](http://jamorn.me/pics/upp_large..jpg)](https://www.youtube.com/watch?v=-DgD_PovEdk)
+https://www.youtube.com/watch?v=-DgD_PovEdk
 
 ## NOTE:
 1. Sorting particles is very important for the performance. (I got 4-6x speedup)
