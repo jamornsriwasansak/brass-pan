@@ -7,10 +7,10 @@ This is possible due to unified particle physics [1].
 The unified particle physics combines the position-based approaches from several papers:
 1. Position-based dynamics [4]
 2. Position-based fluids [5]
-3. Shape-matching [6] (To make the shape-matching stable, I also implemented the robust rotation extraction method [7])
+3. Shape-matching [6] (To make the shape-matching stable, the robust rotation extraction method [7] is implemented)
 
 The surface tension method [2] is implemented to make the fluid look more pleasing.
-We also implemented the aerodynamics [3] for clothes and flag. This increase the realism when the clothes are dropped.
+I also implemented the aerodynamics [3] for clothes and flag. This increase the realism when the clothes are dropped.
 For efficient collision detection and density estimation, an efficient hash-based searching method [8] is implemented.
 
 ## Youtube
