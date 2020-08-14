@@ -10,8 +10,8 @@ The unified particle physics combines the position-based approaches from several
 3. Shape-matching [6] (To make the shape-matching stable, the robust rotation extraction method [7] is implemented)
 
 The surface tension method [2] is implemented to make the fluid look more pleasing.
-I also implemented the aerodynamics [3] for clothes and flag. This increase the realism when the clothes are dropped.
-For efficient collision detection and density estimation, an efficient hash-based searching method [8] is implemented.
+I also implemented the aerodynamics [3] for clothes and flag. This increases the realism when the clothes are dropped from high places.
+For efficient collision detection and density estimation, an efficient hash-based searching method [8] is used.
 
 ## Youtube
 [![unified particle physics](http://jamorn.me/pics/upp_large..jpg)](https://www.youtube.com/watch?v=-DgD_PovEdk)
