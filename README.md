@@ -13,8 +13,9 @@ The unified particle physics combines the position-based approaches from several
 6. Aerodynamics for clothes and flag[3]
 7. For efficient collision detection and density estimation, an efficient hash-based searching method [8] is used.
 
-## Youtube
+## What this framework is capable of
 [![unified particle physics](http://jamorn.me/pics/upp_large..jpg)](https://www.youtube.com/watch?v=-DgD_PovEdk)
+
 https://www.youtube.com/watch?v=-DgD_PovEdk
 
 ## NOTE:
