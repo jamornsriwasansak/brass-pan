@@ -1,4 +1,4 @@
-# brasstower
+# brass-pan
 A CUDA + OpenGL powered position-based physics engine.
 
 ## Description
