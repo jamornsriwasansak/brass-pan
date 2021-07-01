@@ -1,4 +1,4 @@
-# A simple Unified Particle Physics Engine
+# A Unified Particle Physics Engine
 A CUDA + OpenGL powered position-based physics engine.
 
 ## Description
