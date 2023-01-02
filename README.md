@@ -19,8 +19,7 @@ The unified particle physics combines the position-based approaches from several
 https://www.youtube.com/watch?v=-DgD_PovEdk
 
 ## NOTE:
-1. Sorting particles is very critical for the performance. (I got 4-6x speedup thanks)
-2. Sadly, There are some bugs to be killed. (In multi-phase fluid test, the denser fluid floats.) There are a lot of duplicated code to be removed. :(
+Sadly, There are some bugs to be killed. (In multi-phase fluid test, the denser fluid floats.) There are a lot of duplicated code to be removed. :(
 
 References:
 1. MACKLIN , M., MÜLLER , M., CHENTANEZ , N., AND KIM , T.-Y. 2014. Unified particle physics for real-time applications. ACM Transactions on Graphics (TOG) 33, 4, 153.
